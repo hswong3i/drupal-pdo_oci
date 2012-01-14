@@ -91,7 +91,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
   }
 
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
-    return $this->query('SELECT * FROM (SELECT sub1.*, ROWNUM AS line2 FROM ('. $query .') sub1) WHERE line2 BETWEEN '. ($from + 1) .' AND '. ($from + $count), $args, $options);
+    return $this->query('SELECT * FROM (SELECT sub1.*, ROWNUM AS line2 FROM (' . $query . ') sub1) WHERE line2 BETWEEN ' . ($from + 1) . ' AND ' . ($from + $count), $args, $options);
   }
 
   public function queryTemporary($query, array $args = array(), array $options = array()) {

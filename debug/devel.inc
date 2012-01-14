@@ -16,7 +16,7 @@ function dprint_r($input, $return = FALSE, $name = NULL, $function = 'print_r', 
   if ($name) {
     $name .= ' => ';
   }
-  
+
   ob_start();
   $function($input);
   $output = ob_get_clean();
