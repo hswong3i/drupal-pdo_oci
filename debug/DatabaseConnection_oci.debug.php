@@ -1,47 +1,7 @@
 <?php
 
-function dprint_r($input) {
-  print "<pre>";
-  print_r($input);
-  print "</pre>";
-}
-
-// Clone from index.php.
-// This file is under includes/database/oci/debug
-define('DRUPAL_ROOT', getcwd() . '../../../../../');
-require_once DRUPAL_ROOT . '/includes/bootstrap.inc';
-
-// Clone from drupal_bootstrap().
-// Just initialize basic settings.
-_drupal_bootstrap_configuration();
-
-// NOTE: We skip _drupal_bootstrap_page_cache() here, because just hope to
-// debug database driver development.
-//_drupal_bootstrap_page_cache();
-
-// Clone from _drupal_bootstrap_database().
-// We don't call _drupal_bootstrap_database() directly since don't need to 
-// pass to installer or from simpletest.
-require_once DRUPAL_ROOT . '/includes/database/database.inc';
-spl_autoload_register('drupal_autoload_class');
-spl_autoload_register('drupal_autoload_interface');
-
-// Fake the database connection setting to sample database.
-$databases = array (
-  'default' =>
-  array (
-    'default' =>
-    array (
-      'database' => 'AL32UTF8.localdomain',
-      'username' => 'HR',
-      'password' => 'CHANGE',
-      'host' => 'localhost.localdomain',
-      'port' => '',
-      'driver' => 'oci',
-      'prefix' => '',
-    ),
-  ),
-);
+// Initialize configuration in Drupal style.
+require_once './bootstrap.inc';
 
 $cmdstr = 'SELECT last_name, salary FROM employees';
 $stmt = db_query($cmdstr);

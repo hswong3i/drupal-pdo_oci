@@ -96,7 +96,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
   public function queryTemporary($query, array $args = array(), array $options = array()) {
     $tablename = $this->generateTemporaryTableName();
-    return $this->query(preg_replace('/^SELECT/i', 'CREATE GLOBAL TEMPORARY TABLE '. $tablename .' ON COMMIT PRESERVE ROWS AS SELECT', $query), $args, $options);
+    $this->query(preg_replace('/^SELECT/i', 'CREATE GLOBAL TEMPORARY TABLE {' . $tablename . '} ON COMMIT PRESERVE ROWS AS SELECT', $query), $args, $options);
     return $tablename;
   }
 
