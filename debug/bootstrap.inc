@@ -3,8 +3,11 @@
 // Add devel-like dprint_r support for debug.
 require_once './devel.inc';
 
+// Add simpletest-like assert support for debug.
+require_once './drupal_web_test_case.inc';
+
 // Clone from index.php.
-// This file is under includes/database/oci/debug
+// This file is under includes/database/oci/debug/includes
 define('DRUPAL_ROOT', getcwd() . '/../../../..');
 require_once DRUPAL_ROOT . '/includes/bootstrap.inc';
 

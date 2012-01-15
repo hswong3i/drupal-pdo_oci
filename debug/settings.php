@@ -6,7 +6,7 @@ $databases = array (
     'default' =>
     array (
       'database' => 'AL32UTF8.localdomain',
-      'username' => 'HR',
+      'username' => 'test',
       'password' => 'CHANGE',
       'host' => 'localhost.localdomain',
       'port' => '',
