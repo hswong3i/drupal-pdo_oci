@@ -11,7 +11,7 @@
  */
 
 
-class InsertQuery_pgsql extends InsertQuery {
+class InsertQuery_oci extends InsertQuery {
 
   public function execute() {
     if (!$this->preExecute()) {
@@ -22,11 +22,6 @@ class InsertQuery_pgsql extends InsertQuery {
 
     // Fetch the list of blobs and sequences used on that table.
     $table_information = $this->connection->schema()->queryTableInformation($this->table);
-
-    // Each insert happens in its own query in the degenerate case.  However,
-    // we wrap it in a transaction so that it is atomic where possible.  On many
-    // databases, such as SQLite, this is also a notable performance boost.
-    $transaction = $this->connection->startTransaction();
 
     $max_placeholder = 0;
     $blobs = array();
@@ -51,7 +46,7 @@ class InsertQuery_pgsql extends InsertQuery {
           else {
             // BLOB NULL is a bit different from normal case: we can't use
             // StreamAPI, but bind NULL to target field direcly.
-            $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, NULL, PDO::PARAM_LOB);
+            $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx], PDO::PARAM_LOB);
           }
         }
         else {
@@ -84,14 +79,7 @@ class InsertQuery_pgsql extends InsertQuery {
       $options['return'] = Database::RETURN_NULL;
     }
     // Only use the returned last_insert_id if it is not already set.
-    if (!empty($last_insert_id)) {
-      $this->connection->query($stmt, array(), $options);
-    }
-    else {
-      $last_insert_id = $this->connection->query($stmt, array(), $options);
-    }
-
-    $transaction->commit();
+    $last_insert_id = $this->connection->query($stmt, array(), $options);
 
     // Re-initialize the values array so that we can re-use this query.
     $this->insertValues = array();
@@ -100,6 +88,7 @@ class InsertQuery_pgsql extends InsertQuery {
   }
 
   public function __toString() {
+
     // Fetch the list of blobs and sequences used on that table.
     $table_information = $this->connection->schema()->queryTableInformation($this->table);
 
@@ -163,7 +152,7 @@ class InsertQuery_pgsql extends InsertQuery {
   }
 }
 
-class UpdateQuery_pgsql extends UpdateQuery {
+class UpdateQuery_oci extends UpdateQuery {
 
   public function execute() {
     $max_placeholder = 0;
@@ -222,5 +211,53 @@ class UpdateQuery_pgsql extends UpdateQuery {
     $this->connection->query($stmt, $options);
 
     return $stmt->rowCount();
+  }
+
+  public function __toString() {
+    // Fetch the list of blobs and sequences used on that table.
+    $table_information = $this->connection->schema()->queryTableInformation($this->table);
+
+    // Create a sanitized comment string to prepend to the query.
+    $comments = $this->connection->makeComment($this->comments);
+
+    // Expressions take priority over literal fields, so we process those first
+    // and remove any literal fields that conflict.
+    $fields = $this->fields;
+    $update_fields = array();
+    foreach ($this->expressionFields as $field => $data) {
+      $update_fields[] = $field . '=' . $data['expression'];
+      unset($fields[$field]);
+    }
+
+    $max_placeholder = 0;
+    $blob_fields = array();
+    $blob_placeholders = array();
+    foreach ($fields as $field => $value) {
+      if (isset($table_information->blob_fields[$field])) {
+        // BLOG field update in Oracle required additional handling with
+        // EMPTY_BLOG() pleaseholder + RETURNING INTO (see below).
+        $update_fields[] = $field . '=EMPTY_BLOB()';
+        $blob_fields[] = $field;
+        $blob_placeholders[] = ':db_insert_placeholder_' . $i;
+      }
+      else {
+        $update_fields[] = $field . '=:db_update_placeholder_' . ($max_placeholder++);
+      }
+    }
+
+    $query = $comments . 'UPDATE {' . $this->connection->escapeTable($this->table) . '} SET ' . implode(', ', $update_fields);
+
+    if (count($this->condition)) {
+      $this->condition->compile($this->connection, $this);
+      // There is an implicit string cast on $this->condition.
+      $query .= "\nWHERE " . $this->condition;
+    }
+
+    // Oracle BLOG additional handling with RETURNING INTO.
+    if (count($blob_fields)) {
+      $query .= " RETURNING " . implode(", ", $blob_fields) . " INTO " . implode (", ", $blob_placeholders);
+    }
+
+    return $query;
   }
 }
