@@ -1,10 +1,11 @@
 <?php
 
 // Add devel-like dprint_r support for debug.
-require_once './devel.inc';
+require_once dirname(__FILE__) . '/devel.inc';
 
 // Add simpletest-like assert support for debug.
-require_once './drupal_web_test_case.inc';
+require_once dirname(__FILE__) . '/simpletest/autorun.php';
+require_once dirname(__FILE__) . '/drupal_web_test_case.inc';
 
 // Clone from index.php.
 // This file is under includes/database/oci/debug/includes
@@ -27,4 +28,4 @@ spl_autoload_register('drupal_autoload_class');
 spl_autoload_register('drupal_autoload_interface');
 
 // Fake the database connection setting to sample database.
-require_once './settings.php';
+require_once dirname(__FILE__) . '/settings.php';

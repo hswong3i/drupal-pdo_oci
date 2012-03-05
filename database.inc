@@ -150,7 +150,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     return $id;
   }
 
-  public function lastInsertId($sequence_name) {
+  public function lastInsertId($sequence_name = NULL) {
     return db_query("SELECT " . $sequence_name . ".CURRVAL FROM DUAL")->fetchField();
   }
 }

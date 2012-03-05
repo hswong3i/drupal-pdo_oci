@@ -1,0 +1,375 @@
+<?php
+
+/**
+ * Dummy class for fetching into a class.
+ *
+ * PDO supports using a new instance of an arbitrary class for records
+ * rather than just a stdClass or array. This class is for testing that
+ * functionality. (See testQueryFetchClass() below)
+ */
+class FakeRecord { }
+
+/**
+ * Base test class for databases.
+ *
+ * Because all database tests share the same test data, we can centralize that
+ * here.
+ */
+class DatabaseTestCase extends DrupalWebTestCase {
+
+
+}
+
+/**
+ * Test connection management.
+ */
+class DatabaseConnectionTestCase extends DatabaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Connection tests',
+      'description' => 'Tests of the core database system.',
+      'group' => 'Database',
+    );
+  }
+
+  /**
+   * Test that connections return appropriate connection objects.
+   */
+  function testConnectionRouting() {
+    // Clone the master credentials to a slave connection.
+    // Note this will result in two independent connection objects that happen
+    // to point to the same place.
+    $connection_info = Database::getConnectionInfo('default');
+    Database::addConnectionInfo('default', 'slave', $connection_info['default']);
+
+    $db1 = Database::getConnection('default', 'default');
+    $db2 = Database::getConnection('slave', 'default');
+
+    $this->assertNotNull($db1, t('default connection is a real connection object.'));
+    $this->assertNotNull($db2, t('slave connection is a real connection object.'));
+    $this->assertNotIdentical($db1, $db2, t('Each target refers to a different connection.'));
+
+    // Try to open those targets another time, that should return the same objects.
+    $db1b = Database::getConnection('default', 'default');
+    $db2b = Database::getConnection('slave', 'default');
+    $this->assertIdentical($db1, $db1b, t('A second call to getConnection() returns the same object.'));
+    $this->assertIdentical($db2, $db2b, t('A second call to getConnection() returns the same object.'));
+
+    // Try to open an unknown target.
+    $unknown_target = $this->randomName();
+    $db3 = Database::getConnection($unknown_target, 'default');
+    $this->assertNotNull($db3, t('Opening an unknown target returns a real connection object.'));
+    $this->assertIdentical($db1, $db3, t('An unknown target opens the default connection.'));
+
+    // Try to open that unknown target another time, that should return the same object.
+    $db3b = Database::getConnection($unknown_target, 'default');
+    $this->assertIdentical($db3, $db3b, t('A second call to getConnection() returns the same object.'));
+  }
+
+  /**
+   * Test that connections return appropriate connection objects.
+   */
+  function testConnectionRoutingOverride() {
+    // Clone the master credentials to a slave connection.
+    // Note this will result in two independent connection objects that happen
+    // to point to the same place.
+    $connection_info = Database::getConnectionInfo('default');
+    Database::addConnectionInfo('default', 'slave', $connection_info['default']);
+
+    Database::ignoreTarget('default', 'slave');
+
+    $db1 = Database::getConnection('default', 'default');
+    $db2 = Database::getConnection('slave', 'default');
+
+    $this->assertIdentical($db1, $db2, t('Both targets refer to the same connection.'));
+  }
+
+  /**
+   * Tests the closing of a database connection.
+   */
+  function testConnectionClosing() {
+    // Open the default target so we have an object to compare.
+    $db1 = Database::getConnection('default', 'default');
+
+    // Try to close the the default connection, then open a new one.
+    Database::closeConnection('default', 'default');
+    $db2 = Database::getConnection('default', 'default');
+
+    // Opening a connection after closing it should yield an object different than the original.
+    $this->assertNotIdentical($db1, $db2, t('Opening the default connection after it is closed returns a new object.'));
+  }
+
+  /**
+   * Tests the connection options of the active database.
+   */
+  function testConnectionOptions() {
+    $connection_info = Database::getConnectionInfo('default');
+
+    // Be sure we're connected to the default database.
+    $db = Database::getConnection('default', 'default');
+    $connectionOptions = $db->getConnectionOptions();
+
+    // In the MySQL driver, the port can be different, so check individual
+    // options.
+    $this->assertEqual($connection_info['default']['driver'], $connectionOptions['driver'], t('The default connection info driver matches the current connection options driver.'));
+    $this->assertEqual($connection_info['default']['database'], $connectionOptions['database'], t('The default connection info database matches the current connection options database.'));
+
+    // Set up identical slave and confirm connection options are identical.
+    Database::addConnectionInfo('default', 'slave', $connection_info['default']);
+    $db2 = Database::getConnection('slave', 'default');
+    $connectionOptions2 = $db2->getConnectionOptions();
+
+    // Get a fresh copy of the default connection options.
+    $connectionOptions = $db->getConnectionOptions();
+    $this->assertIdentical($connectionOptions, $connectionOptions2, t('The default and slave connection options are identical.'));
+
+    // Set up a new connection with different connection info.
+    $test = $connection_info['default'];
+    $test['database'] .= 'test';
+    Database::addConnectionInfo('test', 'default', $test);
+    $connection_info = Database::getConnectionInfo('test');
+
+    // Get a fresh copy of the default connection options.
+    $connectionOptions = $db->getConnectionOptions();
+    $this->assertNotEqual($connection_info['default']['database'], $connectionOptions['database'], t('The test connection info database does not match the current connection options database.'));
+  }
+}
+
+/**
+ * Test fetch actions, part 1.
+ *
+ * We get timeout errors if we try to run too many tests at once.
+ */
+class DatabaseFetchTestCase extends DatabaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Fetch tests',
+      'description' => 'Test the Database system\'s various fetch capabilities.',
+      'group' => 'Database',
+    );
+  }
+
+  /**
+   * Confirm that we can fetch a record properly in default object mode.
+   */
+  function testQueryFetchDefault() {
+    $records = array();
+    $result = db_query('SELECT name FROM {test} WHERE age = :age', array(':age' => 25));
+    $this->assertTrue($result instanceof DatabaseStatementInterface, t('Result set is a Drupal statement object.'));
+    foreach ($result as $record) {
+      $records[] = $record;
+      $this->assertTrue(is_object($record), t('Record is an object.'));
+      $this->assertIdentical($record->name, 'John', t('25 year old is John.'));
+    }
+
+    $this->assertIdentical(count($records), 1, t('There is only one record.'));
+  }
+
+  /**
+   * Confirm that we can fetch a record to an object explicitly.
+   */
+  function testQueryFetchObject() {
+    $records = array();
+    $result = db_query('SELECT name FROM {test} WHERE age = :age', array(':age' => 25), array('fetch' => PDO::FETCH_OBJ));
+    foreach ($result as $record) {
+      $records[] = $record;
+      $this->assertTrue(is_object($record), t('Record is an object.'));
+      $this->assertIdentical($record->name, 'John', t('25 year old is John.'));
+    }
+
+    $this->assertIdentical(count($records), 1, t('There is only one record.'));
+  }
+
+  /**
+   * Confirm that we can fetch a record to an array associative explicitly.
+   */
+  function testQueryFetchArray() {
+    $records = array();
+    $result = db_query('SELECT name FROM {test} WHERE age = :age', array(':age' => 25), array('fetch' => PDO::FETCH_ASSOC));
+    foreach ($result as $record) {
+      $records[] = $record;
+      if ($this->assertTrue(is_array($record), t('Record is an array.'))) {
+        $this->assertIdentical($record['name'], 'John', t('Record can be accessed associatively.'));
+      }
+    }
+
+    $this->assertIdentical(count($records), 1, t('There is only one record.'));
+  }
+
+  /**
+   * Confirm that we can fetch a record into a new instance of a custom class.
+   *
+   * @see FakeRecord
+   */
+  function testQueryFetchClass() {
+    $records = array();
+    $result = db_query('SELECT name FROM {test} WHERE age = :age', array(':age' => 25), array('fetch' => 'FakeRecord'));
+    foreach ($result as $record) {
+      $records[] = $record;
+      if ($this->assertTrue($record instanceof FakeRecord, t('Record is an object of class FakeRecord.'))) {
+        $this->assertIdentical($record->name, 'John', t('25 year old is John.'));
+      }
+    }
+
+    $this->assertIdentical(count($records), 1, t('There is only one record.'));
+  }
+}
+
+/**
+ * Test fetch actions, part 2.
+ *
+ * We get timeout errors if we try to run too many tests at once.
+ */
+class DatabaseFetch2TestCase extends DatabaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Fetch tests, part 2',
+      'description' => 'Test the Database system\'s various fetch capabilities.',
+      'group' => 'Database',
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+  }
+
+  // Confirm that we can fetch a record into an indexed array explicitly.
+  function testQueryFetchNum() {
+    $records = array();
+    $result = db_query('SELECT name FROM {test} WHERE age = :age', array(':age' => 25), array('fetch' => PDO::FETCH_NUM));
+    foreach ($result as $record) {
+      $records[] = $record;
+      if ($this->assertTrue(is_array($record), t('Record is an array.'))) {
+        $this->assertIdentical($record[0], 'John', t('Record can be accessed numerically.'));
+      }
+    }
+
+    $this->assertIdentical(count($records), 1, 'There is only one record');
+  }
+
+  /**
+   * Confirm that we can fetch a record into a doubly-keyed array explicitly.
+   */
+  function testQueryFetchBoth() {
+    $records = array();
+    $result = db_query('SELECT name FROM {test} WHERE age = :age', array(':age' => 25), array('fetch' => PDO::FETCH_BOTH));
+    foreach ($result as $record) {
+      $records[] = $record;
+      if ($this->assertTrue(is_array($record), t('Record is an array.'))) {
+        $this->assertIdentical($record[0], 'John', t('Record can be accessed numerically.'));
+        $this->assertIdentical($record['name'], 'John', t('Record can be accessed associatively.'));
+      }
+    }
+
+    $this->assertIdentical(count($records), 1, t('There is only one record.'));
+  }
+
+  /**
+   * Confirm that we can fetch an entire column of a result set at once.
+   */
+  function testQueryFetchCol() {
+    $records = array();
+    $result = db_query('SELECT name FROM {test} WHERE age > :age', array(':age' => 25));
+    $column = $result->fetchCol();
+    $this->assertIdentical(count($column), 3, t('fetchCol() returns the right number of records.'));
+
+    $result = db_query('SELECT name FROM {test} WHERE age > :age', array(':age' => 25));
+    $i = 0;
+    foreach ($result as $record) {
+      $this->assertIdentical($record->name, $column[$i++], t('Column matches direct accesss.'));
+    }
+  }
+}
+
+/**
+ * Test the insert builder.
+ */
+class DatabaseInsertTestCase extends DatabaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Insert tests',
+      'description' => 'Test the Insert query builder.',
+      'group' => 'Database',
+    );
+  }
+
+  /**
+   * Test the very basic insert functionality.
+   */
+  function testSimpleInsert() {
+    $num_records_before = db_query('SELECT COUNT(*) FROM {test}')->fetchField();
+
+    $query = db_insert('test');
+    $query->fields(array(
+      'name' => 'Yoko',
+      'age' => '29',
+    ));
+    $query->execute();
+
+    $num_records_after = db_query('SELECT COUNT(*) FROM {test}')->fetchField();
+    $this->assertIdentical($num_records_before + 1, (int) $num_records_after, t('Record inserts correctly.'));
+    $saved_age = db_query('SELECT age FROM {test} WHERE name = :name', array(':name' => 'Yoko'))->fetchField();
+    $this->assertIdentical($saved_age, '29', t('Can retrieve after inserting.'));
+  }
+}
+
+/**
+ * Update builder tests.
+ */
+class DatabaseUpdateTestCase extends DatabaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Update tests',
+      'description' => 'Test the Update query builder.',
+      'group' => 'Database',
+    );
+  }
+
+  /**
+   * Confirm that we can update a single record successfully.
+   */
+  function testSimpleUpdate() {
+    $num_updated = db_update('test')
+      ->fields(array('name' => 'Tiffany'))
+      ->condition('id', 1)
+      ->execute();
+    $this->assertIdentical($num_updated, 1, t('Updated 1 record.'));
+
+    $saved_name = db_query('SELECT name FROM {test} WHERE id = :id', array(':id' => 1))->fetchField();
+    $this->assertIdentical($saved_name, 'Tiffany', t('Updated name successfully.'));
+  }
+
+  /**
+   * Confirm that we can update a multiple records successfully.
+   */
+  function testMultiUpdate() {
+    $num_updated = db_update('test')
+      ->fields(array('job' => 'Musician'))
+      ->condition('job', 'Singer')
+      ->execute();
+    $this->assertIdentical($num_updated, 2, t('Updated 2 records.'));
+
+    $num_matches = db_query('SELECT COUNT(*) FROM {test} WHERE job = :job', array(':job' => 'Musician'))->fetchField();
+    $this->assertIdentical($num_matches, '2', t('Updated fields successfully.'));
+  }
+
+  /**
+   * Confirm that we can update a multiple records with a non-equality condition.
+   */
+  function testMultiGTUpdate() {
+    $num_updated = db_update('test')
+      ->fields(array('job' => 'Musician'))
+      ->condition('age', 26, '>')
+      ->execute();
+    $this->assertIdentical($num_updated, 2, t('Updated 2 records.'));
+
+    $num_matches = db_query('SELECT COUNT(*) FROM {test} WHERE job = :job', array(':job' => 'Musician'))->fetchField();
+    $this->assertIdentical($num_matches, '2', t('Updated fields successfully.'));
+  }
+
+}

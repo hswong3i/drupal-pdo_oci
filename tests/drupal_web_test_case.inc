@@ -1,52 +1,27 @@
 <?php
 
-function randomName($length = 8) {
-  $values = array_merge(range(65, 90), range(97, 122), range(48, 57));
-  $max = count($values) - 1;
-  $str = chr(mt_rand(97, 122));
-  for ($i = 1; $i < $length; $i++) {
-    $str .= chr($values[mt_rand(0, $max)]);
-  }
-  return $str;
-}
+class DrupalWebTestCase extends UnitTestCase {
 
-function _assert($status, $message = '', $group = 'Other', array $caller = NULL) {
-  // Convert boolean status to string status.
-  if (is_bool($status)) {
-    $status = $status ? 'pass' : 'fail';
+  function setUp() {
+    shell_exec("sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @" . dirname(__FILE__) . "/drupal_web_test_case.sql");
   }
 
-  dpr($status . ": " . $message);
-
-  if ($status == 'pass') {
-    return TRUE;
+  public static function randomString($length = 8) {
+    $str = '';
+    for ($i = 0; $i < $length; $i++) {
+      $str .= chr(mt_rand(32, 126));
+    }
+    return $str;
   }
-  else {
-    return FALSE;
+
+  public static function randomName($length = 8) {
+    $values = array_merge(range(65, 90), range(97, 122), range(48, 57));
+    $max = count($values) - 1;
+    $str = chr(mt_rand(97, 122));
+    for ($i = 1; $i < $length; $i++) {
+      $str .= chr($values[mt_rand(0, $max)]);
+    }
+    return $str;
   }
-}
 
-function assertTrue($value, $message = '', $group = 'Other') {
-  return _assert((bool) $value, $message ? $message : "Value $value is TRUE.", $group);
 }
-
-function assertIdentical($first, $second, $message = '', $group = 'Other') {
-  return _assert($first === $second, $message ? $message : "Value $first is identical to value $second.", $group);
-}
-
-function assertNotNull($value, $message = '', $group = 'Other') {
-  return _assert(isset($value), $message ? $message : "Value $value is not NULL.", $group);
-}
-
-function assertNotIdentical($first, $second, $message = '', $group = 'Other') {
-  return _assert($first !== $second, $message ? $message : "Value $frst is not identical to value $second.", $group);
-}
-
-function assertEqual($first, $second, $message = '', $group = 'Other') {
-  return _assert($first == $second, $message ? $message : "Value $first is equal to value $second.", $group);
-}
-
-function assertNotEqual($first, $second, $message = '', $group = 'Other') {
-  return _assert($first != $second, $message ? $message : "Value $first is not equal to value $second.", $group);
-}
-
