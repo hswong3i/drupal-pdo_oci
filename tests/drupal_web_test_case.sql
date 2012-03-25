@@ -1,7 +1,6 @@
 /**
  * To login sqlplus:
- *   su - oracle
- *   sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @simpletest.sql
+ *   sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @drupal_web_test_case.sql
  */
 
 -- Connect with SYS and create new user "test".
@@ -60,13 +59,13 @@ CREATE TABLE test_people (
   name VARCHAR2(255) DEFAULT '' NOT NULL,
   age INT DEFAULT 0 NOT NULL CHECK (age >= 0),
   job VARCHAR2(255) DEFAULT '' NOT NULL,
-  CONSTRAINT test_pk PRIMARY KEY (job),
-  CONSTRAINT test_name_key UNIQUE (name)
+  CONSTRAINT test_people_pk PRIMARY KEY (job),
+  CONSTRAINT test_people_name_key UNIQUE (name)
 );
 
 CREATE INDEX test_people_ages_idx ON test_people (age);
 
-INSERT INTO test (name, age, job) VALUES ('Meredith', 30, 'Speaker');
+INSERT INTO test_people (name, age, job) VALUES ('Meredith', 30, 'Speaker');
 
 -- $schema['test_one_blob']
 CREATE TABLE test_one_blob (
