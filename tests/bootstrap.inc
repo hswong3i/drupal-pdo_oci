@@ -1,10 +1,6 @@
 <?php
 
-// Add devel-like dprint_r support for debug.
-require_once dirname(__FILE__) . '/devel.inc';
-
 // Add simpletest-like assert support for debug.
-require_once dirname(__FILE__) . '/simpletest/autorun.php';
 require_once dirname(__FILE__) . '/drupal_web_test_case.inc';
 
 // Clone from index.php.

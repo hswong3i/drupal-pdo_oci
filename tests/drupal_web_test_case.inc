@@ -1,5 +1,8 @@
 <?php
 
+require_once dirname(__FILE__) . '/simpletest/autorun.php';
+require_once dirname(__FILE__) . '/simpletest/reporter.php';
+
 class DrupalWebTestCase extends UnitTestCase {
 
   function setUp() {
@@ -25,3 +28,42 @@ class DrupalWebTestCase extends UnitTestCase {
   }
 
 }
+
+class DrupalHtmlReporter extends HtmlReporter {
+
+  function paintPass($message) {
+    parent::paintPass($message);
+    print "<span class=\"pass\">Pass</span>: ";
+    $breadcrumb = $this->getTestList();
+    array_shift($breadcrumb);
+    print implode(" -&gt; ", $breadcrumb);
+    print " -&gt; " . $this->htmlEntities($message) . "<br />\n";
+  }
+
+}
+
+function dpr($input, $return = FALSE, $name = NULL) {
+  return dprint_r($input, $return, $name);
+}
+
+function dprint_r($input, $return = FALSE, $name = NULL, $function = 'print_r', $check= TRUE) {
+  if ($name) {
+    $name .= ' => ';
+  }
+
+  ob_start();
+  $function($input);
+  $output = ob_get_clean();
+
+  $printed_value = '<pre>'. $name . $output .'</pre>';
+
+  if ($return) {
+    return $printed_value;
+  }
+  else {
+    print $printed_value;
+  }
+}
+
+SimpleTest::prefer(new DrupalWebTestCase());
+SimpleTest::prefer(new DrupalHtmlReporter());
