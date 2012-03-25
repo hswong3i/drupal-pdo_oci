@@ -472,4 +472,252 @@ class DatabaseSelectTestCase extends DatabaseTestCase {
 
     $this->assertEqual($num_records, 4, t('Returned the correct number of rows.'));
   }
+
+  /**
+   * Test rudimentary SELECT statement with a COMMENT.
+   */
+  function testSimpleComment() {
+    $query = db_select('test')->comment('Testing query comments');
+    $name_field = $query->addField('test', 'name');
+    $age_field = $query->addField('test', 'age', 'age');
+    $result = $query->execute();
+
+    $num_records = 0;
+    foreach ($result as $record) {
+      $num_records++;
+    }
+
+    $query = (string)$query;
+    $expected = "/* Testing query comments */ SELECT test.name AS name, test.age AS age\nFROM \n{test} test";
+
+    $this->assertEqual($num_records, 4, t('Returned the correct number of rows.'));
+    $this->assertEqual($query, $expected, t('The flattened query contains the comment string.'));
+  }
+
+  /**
+   * Test that we can UNION multiple Select queries together. This is
+   * semantically equal to UNION DISTINCT, so we don't explicity test that.
+   */
+  function testUnion() {
+    $query_1 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', array(27, 28), 'IN');
+
+    $query_2 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', 28);
+
+    $query_1->union($query_2);
+
+    $names = $query_1->execute()->fetchCol();
+
+    // Ensure we only get 2 records.
+    $this->assertEqual(count($names), 2, t('UNION correctly discarded duplicates.'));
+
+    $this->assertEqual($names[0], 'George', t('First query returned correct name.'));
+    $this->assertEqual($names[1], 'Ringo', t('Second query returned correct name.'));
+  }
+
+  /**
+   * Test that we can UNION ALL multiple Select queries together.
+   */
+  function testUnionAll() {
+    $query_1 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', array(27, 28), 'IN');
+
+    $query_2 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', 28);
+
+    $query_1->union($query_2, 'ALL');
+
+    $names = $query_1->execute()->fetchCol();
+
+    // Ensure we get all 3 records.
+    $this->assertEqual(count($names), 3, t('UNION ALL correctly preserved duplicates.'));
+
+    $this->assertEqual($names[0], 'George', t('First query returned correct first name.'));
+    $this->assertEqual($names[1], 'Ringo', t('Second query returned correct second name.'));
+    $this->assertEqual($names[2], 'Ringo', t('Third query returned correct name.'));
+  }
+
+  /**
+   * Test that aliases are renamed when duplicates.
+   */
+  function testSelectDuplicateAlias() {
+    $query = db_select('test', 't');
+    $alias1 = $query->addField('t', 'name', 'the_alias');
+    $alias2 = $query->addField('t', 'age', 'the_alias');
+    $this->assertNotIdentical($alias1, $alias2, 'Duplicate aliases are renamed.');
+  }
+}
+
+/**
+ * Test more complex select statements.
+ */
+class DatabaseSelectComplexTestCase extends DatabaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Select tests, complex',
+      'description' => 'Test the Select query builder with more complex queries.',
+      'group' => 'Database',
+    );
+  }
+
+  /**
+   * Test simple JOIN statements.
+   */
+  function testDefaultJoin() {
+    $query = db_select('test_task', 't');
+    $people_alias = $query->join('test', 'p', 't.pid = p.id');
+    $name_field = $query->addField($people_alias, 'name', 'name');
+    $task_field = $query->addField('t', 'task', 'task');
+    $priority_field = $query->addField('t', 'priority', 'priority');
+
+    $query->orderBy($priority_field);
+    $result = $query->execute();
+
+    $num_records = 0;
+    $last_priority = 0;
+    foreach ($result as $record) {
+      $num_records++;
+      $this->assertTrue($record->$priority_field >= $last_priority, t('Results returned in correct order.'));
+      $this->assertNotEqual($record->$name_field, 'Ringo', t('Taskless person not selected.'));
+      $last_priority = $record->$priority_field;
+    }
+
+    $this->assertEqual($num_records, 7, t('Returned the correct number of rows.'));
+  }
+
+  /**
+   * Test LEFT OUTER joins.
+   */
+  function testLeftOuterJoin() {
+    $query = db_select('test', 'p');
+    $people_alias = $query->leftJoin('test_task', 't', 't.pid = p.id');
+    $name_field = $query->addField('p', 'name', 'name');
+    $task_field = $query->addField($people_alias, 'task', 'task');
+    $priority_field = $query->addField($people_alias, 'priority', 'priority');
+
+    $query->orderBy($name_field);
+    $result = $query->execute();
+
+    $num_records = 0;
+    $last_name = 0;
+
+    foreach ($result as $record) {
+      $num_records++;
+      $this->assertTrue(strcmp($record->$name_field, $last_name) >= 0, t('Results returned in correct order.'));
+      $last_priority = $record->$name_field;
+    }
+
+    $this->assertEqual($num_records, 8, t('Returned the correct number of rows.'));
+  }
+
+  /**
+   * Test GROUP BY clauses.
+   */
+  function testGroupBy() {
+    $query = db_select('test_task', 't');
+    $count_field = $query->addExpression('COUNT(task)', 'num');
+    $task_field = $query->addField('t', 'task');
+    $query->orderBy($count_field);
+    $query->groupBy($task_field);
+    $result = $query->execute();
+
+    $num_records = 0;
+    $last_count = 0;
+    $records = array();
+    foreach ($result as $record) {
+      $num_records++;
+      $this->assertTrue($record->$count_field >= $last_count, t('Results returned in correct order.'));
+      $last_count = $record->$count_field;
+      $records[$record->$task_field] = $record->$count_field;
+    }
+
+    $correct_results = array(
+      'eat' => 1,
+      'sleep' => 2,
+      'code' => 1,
+      'found new band' => 1,
+      'perform at superbowl' => 1,
+    );
+
+    foreach ($correct_results as $task => $count) {
+      $this->assertEqual($records[$task], $count, t("Correct number of '@task' records found.", array('@task' => $task)));
+    }
+
+    $this->assertEqual($num_records, 6, t('Returned the correct number of total rows.'));
+  }
+
+  /**
+   * Test GROUP BY and HAVING clauses together.
+   */
+  function testGroupByAndHaving() {
+    $query = db_select('test_task', 't');
+    $count_field = $query->addExpression('COUNT(task)', 'num');
+    $task_field = $query->addField('t', 'task');
+    $query->orderBy($count_field);
+    $query->groupBy($task_field);
+    $query->having('COUNT(task) >= 2');
+    $result = $query->execute();
+
+    $num_records = 0;
+    $last_count = 0;
+    $records = array();
+    foreach ($result as $record) {
+      $num_records++;
+      $this->assertTrue($record->$count_field >= 2, t('Record has the minimum count.'));
+      $this->assertTrue($record->$count_field >= $last_count, t('Results returned in correct order.'));
+      $last_count = $record->$count_field;
+      $records[$record->$task_field] = $record->$count_field;
+    }
+
+    $correct_results = array(
+      'sleep' => 2,
+    );
+
+    foreach ($correct_results as $task => $count) {
+      $this->assertEqual($records[$task], $count, t("Correct number of '@task' records found.", array('@task' => $task)));
+    }
+
+    $this->assertEqual($num_records, 1, t('Returned the correct number of total rows.'));
+  }
+
+  /**
+   * Test range queries. The SQL clause varies with the database.
+   */
+  function testRange() {
+    $query = db_select('test');
+    $name_field = $query->addField('test', 'name');
+    $age_field = $query->addField('test', 'age', 'age');
+    $query->range(0, 2);
+    $result = $query->execute();
+
+    $num_records = 0;
+    foreach ($result as $record) {
+      $num_records++;
+    }
+
+    $this->assertEqual($num_records, 2, t('Returned the correct number of rows.'));
+  }
+
+  /**
+   * Test distinct queries.
+   */
+  function testDistinct() {
+    $query = db_select('test_task');
+    $task_field = $query->addField('test_task', 'task');
+    $query->distinct();
+    $result = $query->execute();
+
+    $num_records = 0;
+    foreach ($result as $record) {
+      $num_records++;
+    }
+
+    $this->assertEqual($num_records, 6, t('Returned the correct number of rows.'));
+  }
 }
