@@ -121,8 +121,8 @@ class InsertQuery_oci extends InsertQuery {
         $new_placeholder = $max_placeholder + count($insert_values);
         for ($i = $max_placeholder; $i < $new_placeholder; ++$i) {
           if (isset($table_information->blob_fields[$field])) {
-            // BLOG field insert in Oracle required additional handling with
-            // EMPTY_BLOG() pleaseholder + RETURNING INTO (see below).
+            // BLOB field insert in Oracle required additional handling with
+            // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
             $placeholders[] = 'EMPTY_BLOB()';
             $blob_fields[] = $field;
             $blob_placeholders[] = ':db_insert_placeholder_' . $i;
@@ -143,7 +143,7 @@ class InsertQuery_oci extends InsertQuery {
 
     $query .= implode(', ', $values);
 
-    // Oracle BLOG additional handling with RETURNING INTO.
+    // Oracle BLOB additional handling with RETURNING INTO.
     if (count($blob_fields)) {
       $query .= " RETURNING " . implode(", ", $blob_fields) . " INTO " . implode (", ", $blob_placeholders);
     }
@@ -234,8 +234,8 @@ class UpdateQuery_oci extends UpdateQuery {
     $blob_placeholders = array();
     foreach ($fields as $field => $value) {
       if (isset($table_information->blob_fields[$field])) {
-        // BLOG field update in Oracle required additional handling with
-        // EMPTY_BLOG() pleaseholder + RETURNING INTO (see below).
+        // BLOB field update in Oracle required additional handling with
+        // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
         $update_fields[] = $field . '=EMPTY_BLOB()';
         $blob_fields[] = $field;
         $blob_placeholders[] = ':db_insert_placeholder_' . $i;
@@ -253,7 +253,7 @@ class UpdateQuery_oci extends UpdateQuery {
       $query .= "\nWHERE " . $this->condition;
     }
 
-    // Oracle BLOG additional handling with RETURNING INTO.
+    // Oracle BLOB additional handling with RETURNING INTO.
     if (count($blob_fields)) {
       $query .= " RETURNING " . implode(", ", $blob_fields) . " INTO " . implode (", ", $blob_placeholders);
     }
