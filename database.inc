@@ -90,8 +90,20 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
   }
 
+  public function escapeTable($table) {
+    return '"' . preg_replace('/[^A-Za-z0-9_.]+/', '', $table) . '"';
+  }
+
+  public function escapeField($field) {
+    return '"' . preg_replace('/[^A-Za-z0-9_.]+/', '', $field) . '"';
+  }
+
+  public function escapeAlias($field) {
+    return '"' . preg_replace('/[^A-Za-z0-9_]+/', '', $field) . '"';
+  }
+
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
-    return $this->query('SELECT * FROM (SELECT sub1.*, ROWNUM AS line2 FROM (' . $query . ') sub1) WHERE line2 BETWEEN ' . ($from + 1) . ' AND ' . ($from + $count), $args, $options);
+    return $this->query('SELECT * FROM (SELECT SUB1.*, ROWNUM AS LINE2 FROM (' . $query . ') SUB1) WHERE LINE2 BETWEEN ' . ($from + 1) . ' AND ' . ($from + $count), $args, $options);
   }
 
   public function queryTemporary($query, array $args = array(), array $options = array()) {
@@ -127,7 +139,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
    * Oracle has built in sequence. We'll use these instead of inserting
    * and updating a sequences table.
    */
-  public function nextId($existing = 0) {
+  public function nextId($existing_id = 0) {
 
     // Retrive the name of the sequence. This information cannot be cached
     // because the prefix may change, for example, like it does in simpletests.
@@ -135,23 +147,27 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
     // When Oracle gets a value too small then it will lock the table,
     // retry the INSERT and if is's still too small than alter the sequence.
-    $id = $this->query("SELECT " . $sequence_name . ".nextval FROM DUAL")->fetchField();
-    if ($id > $existing) {
+    $id = $this->query("SELECT " . $sequence_name . ".NEXTVAL FROM DUAL")->fetchField();
+    if ($id > $existing_id) {
       return $id;
     }
 
     // Reset the sequence to a higher value than the existing id.
     $this->query("DROP SEQUENCE " . $sequence_name);
-    $this->query("CREATE SEQUENCE " . $sequence_name . " START WITH " . ($existing + 1));
+    $this->query("CREATE SEQUENCE " . $sequence_name . " START WITH " . ($existing_id + 1));
 
     // Retrive the next id. We know this will be as high as we want it.
-    $id = $this->query("SELECT ". $sequence_name . ".nextval FROM DUAL")-> fetchField();
+    $id = $this->query("SELECT ". $sequence_name . ".NEXTVAL FROM DUAL")-> fetchField();
 
     return $id;
   }
 
-  public function lastInsertId($sequence_name = NULL) {
-    return db_query("SELECT " . $sequence_name . ".CURRVAL FROM DUAL")->fetchField();
+  public function lastInsertId($name = NULL) {
+    if (!$name) {
+      throw new Exception('The name of the sequence is mandatory for Oracle.');
+    }
+
+    return $this->query("SELECT " . $name . ".CURRVAL FROM DUAL")->fetchField();
   }
 }
 
