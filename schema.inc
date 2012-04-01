@@ -47,12 +47,22 @@ class DatabaseSchema_oci extends DatabaseSchema {
       list($schema, $table_name) = explode('.', $key);
       $table_information = (object) array(
         'blob_fields' => array(),
+        'sequences' => array(),
+        'serial_fields' => array(),
       );
       // Don't use {} around user_tab_cols table.
       $result = $this->connection->query('SELECT COLUMN_NAME, DATA_TYPE, DATA_DEFAULT FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name', array(':table_name' => $table_name));
       foreach ($result as $column) {
         if ($column->data_type == 'BLOB') {
           $table_information->blob_fields[$column->column_name] = TRUE;
+        }
+      }
+      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER", array(':table_name' => $table_name));
+      foreach ($result as $column) {
+        $sequence = $this->connection->makeSequenceName($column->table_name, $column->column_name);
+        if ($this->constraintExists($sequence_name)) {
+          $table_information->sequences[] = $sequence;
+          $table_information->serial_fields[] = $column->column_name;
         }
       }
       $this->tableInformation[$key] = $table_information;

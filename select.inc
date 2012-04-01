@@ -2,7 +2,7 @@
 
 /**
  * @file
- * Select builder for PostgreSQL database engine.
+ * Select builder for Oracle database engine.
  */
 
 /**
@@ -39,7 +39,7 @@ class SelectQuery_oci extends SelectQuery {
     }
     foreach ($this->fields as $alias => $field) {
       // Always use the AS keyword for field aliases, as some
-      // databases require it (e.g., PostgreSQL).
+      // databases require it (e.g., Oracle).
       $fields[] = (isset($field['table']) ? $this->connection->escapeTable($field['table']) . '.' : '') . $this->connection->escapeField($field['field']) . ' AS ' . $this->connection->escapeAlias($field['alias']);
     }
     foreach ($this->expressions as $alias => $expression) {

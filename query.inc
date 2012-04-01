@@ -53,6 +53,30 @@ class InsertQuery_oci extends InsertQuery {
           $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx]);
         }
       }
+      // Check if values for a serial field has been passed.
+      if (!empty($table_information->serial_fields)) {
+        foreach ($table_information->serial_fields as $index => $serial_field) {
+          $serial_key = array_search($serial_field, $this->insertFields);
+          if ($serial_key !== FALSE) {
+            $serial_value = $insert_values[$serial_key];
+
+            // Force $last_insert_id to the specified value. This is only done
+            // if $index is 0.
+            if ($index == 0) {
+              $last_insert_id = $serial_value;
+            }
+            // Set the sequence to the bigger value of either the passed
+            // value or the max value of the column. It can happen that another
+            // thread calls nextval() which could lead to a serial number being
+            // used twice. However, trying to insert a value into a serial
+            // column should only be done in very rare cases and is not thread
+            // safe by definition.
+            $current_value = $this->connection->lastInsertId($table_information->sequences[$index]);
+            $this->connection->query('DROP SEQUENCE ' . $table_information->sequences[$index]);
+            $this->connection->query('CREATE SEQUENCE ' . $table_information->sequences[$index] . ' START WITH :serial_value', array(':serial_value' => max((int) $serial_value, (int) $current_value)));
+          }
+        }
+      }
     }
 
     if (!empty($this->fromQuery)) {
@@ -78,11 +102,27 @@ class InsertQuery_oci extends InsertQuery {
     elseif ($options['return'] == Database::RETURN_INSERT_ID) {
       $options['return'] = Database::RETURN_NULL;
     }
-    // Only use the returned last_insert_id if it is not already set.
-    $last_insert_id = $this->connection->query($stmt, array(), $options);
+
+    // Each insert happens in its own query in the degenerate case. However,
+    // we wrap it in a transaction so that it is atomic where possible. On many
+    // databases, such as SQLite, this is also a notable performance boost.
+    $transaction = $this->connection->startTransaction();
+
+    try {
+      // Only use the returned last_insert_id if it is not already set.
+      $last_insert_id = $this->connection->query($stmt, array(), $options);
+    }
+    catch (Exception $e) {
+      // One of the INSERTs failed, rollback the whole batch.
+      $transaction->rollback();
+      // Rethrow the exception for the calling code.
+      throw $e;
+    }
 
     // Re-initialize the values array so that we can re-use this query.
     $this->insertValues = array();
+
+    // Transaction commits here where $transaction looses scope.
 
     return $last_insert_id;
   }
@@ -116,10 +156,11 @@ class InsertQuery_oci extends InsertQuery {
 
         // Default fields aren't really placeholders, but this is the most convenient
         // way to handle them.
-        $placeholders = array_pad($placeholders, count($this->defaultFields), 'default');
+        $placeholders = array_pad($placeholders, count($this->defaultFields), 'DEFAULT');
 
         $new_placeholder = $max_placeholder + count($insert_values);
-        for ($i = $max_placeholder; $i < $new_placeholder; ++$i) {
+        $i = $max_placeholder;
+        foreach ($this->insertFields as $field) {
           if (isset($table_information->blob_fields[$field])) {
             // BLOB field insert in Oracle required additional handling with
             // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
@@ -130,6 +171,7 @@ class InsertQuery_oci extends InsertQuery {
           else {
             $placeholders[] = ':db_insert_placeholder_' . $i;
           }
+          ++$i;
         }
         $max_placeholder = $new_placeholder;
         $values[] = '(' . implode(', ', $placeholders) . ')';
@@ -137,7 +179,7 @@ class InsertQuery_oci extends InsertQuery {
     }
     else {
       // If there are no values, then this is a default-only query. We still need to handle that.
-      $placeholders = array_fill(0, count($this->defaultFields), 'default');
+      $placeholders = array_fill(0, count($this->defaultFields), 'DEFAULT');
       $values[] = '(' . implode(', ', $placeholders) . ')';
     }
 
