@@ -87,7 +87,7 @@ class SchemaTestCase extends DrupalWebTestCase {
     $this->assertTrue($this->tryInsert('test_table2'), t('Insert into the new table succeeded.'));
 
     // We should have successfully inserted exactly two rows.
-    $count = db_query('SELECT COUNT(*) FROM {test_table2}')->fetchField();
+    $count = db_query('SELECT COUNT(*) FROM "{test_table2}"')->fetchField();
     $this->assertEqual($count, 2, t('Two fields were successfully inserted.'));
 
     // Try to drop the table.

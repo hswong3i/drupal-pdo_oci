@@ -332,7 +332,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $spec['not null'] = FALSE;
     }
 
-    $query = 'ALTER TABLE {' . $table . '} ADD (';
+    $query = 'ALTER TABLE "{' . $table . '}" ADD (';
     $query .= $this->createFieldSql($field, $this->processField($spec));
     $query .= ')';
     $this->connection->query($query);
@@ -346,7 +346,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     }
 
     if ($fixnull) {
-      $this->connection->query("ALTER TABLE {" . $table . "} ALTER $field SET NOT NULL");
+      $this->connection->query('ALTER TABLE "{' . $table . '}" ALTER "' . $field . '" SET NOT NULL');
     }
 
     if (isset($new_keys)) {
@@ -360,7 +360,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add column comment.
     if (!empty($spec['description'])) {
-      $this->connection->query('COMMENT ON COLUMN {' . $table . '}.' . $field . ' IS ' . $this->prepareComment($spec['description']));
+      $this->connection->query('COMMENT ON COLUMN "{' . $table . '}"."' . $field . '" IS ' . $this->prepareComment($spec['description']));
     }
   }
 
@@ -472,7 +472,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    $this->connection->query('DROP INDEX "' . $this->prefixNonTable($table, $name, 'idx') . '"');
+    $this->connection->query('DROP INDEX "' . $this->prefixNonTable($table, $name, 'ix') . '"');
     return TRUE;
   }
 
@@ -563,7 +563,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
   }
 
   protected function _createIndexSql($table, $name, $fields) {
-    $query = 'CREATE INDEX "' . $this->prefixNonTable($table, $name, 'idx') . '" ON "{' . $table . '}" (';
+    $query = 'CREATE INDEX "' . $this->prefixNonTable($table, $name, 'ix') . '" ON "{' . $table . '}" (';
     $query .= $this->_createKeySql($fields) . ')';
     return $query;
   }

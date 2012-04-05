@@ -49,15 +49,24 @@ class DatabaseConnection_oci extends DatabaseConnection {
   public function query($query, array $args = array(), $options = array()) {
 
     $options += $this->defaultOptions();
+    $query = $this->escapeQuery($query);
 
     try {
       if ($query instanceof DatabaseStatementInterface) {
         $stmt = $query;
+
+        // TODO
+        dpr(array_filter(array($stmt->queryString, $args)));
+
         $stmt->execute(NULL, $options);
       }
       else {
         $this->expandArguments($query, $args);
         $stmt = $this->prepareQuery($query);
+
+        // TODO
+        dpr(array_filter(array($stmt->queryString, $args)));
+
         $stmt->execute($args, $options);
       }
 
@@ -90,16 +99,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
   }
 
-  public function escapeTable($table) {
-    return '"' . preg_replace('/[^A-Za-z0-9_.]+/', '', $table) . '"';
-  }
-
-  public function escapeField($field) {
-    return '"' . preg_replace('/[^A-Za-z0-9_.]+/', '', $field) . '"';
-  }
-
-  public function escapeAlias($field) {
-    return '"' . preg_replace('/[^A-Za-z0-9_]+/', '', $field) . '"';
+  protected function escapeQuery($query) {
+    #$query = preg_replace('/ ([a-z][a-z0-9_.]*) /', ' "$1" ', $query);
+    return $query;
   }
 
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {

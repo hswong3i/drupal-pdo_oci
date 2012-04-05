@@ -141,10 +141,10 @@ class InsertQuery_oci extends InsertQuery {
     // If we're selecting from a SelectQuery, finish building the query and
     // pass it back, as any remaining options are irrelevant.
     if (!empty($this->fromQuery)) {
-      return $comments . 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') ' . $this->fromQuery;
+      return $comments . 'INSERT INTO "{' . $this->table . '}" ("' . implode('", "', $insert_fields) . '") ' . $this->fromQuery;
     }
 
-    $query = $comments . 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') VALUES ';
+    $query = $comments . 'INSERT INTO "{' . $this->table . '}" ("' . implode('", "', $insert_fields) . '") VALUES ';
 
     $max_placeholder = 0;
     $values = array();
@@ -187,7 +187,7 @@ class InsertQuery_oci extends InsertQuery {
 
     // Oracle BLOB additional handling with RETURNING INTO.
     if (count($blob_fields)) {
-      $query .= " RETURNING " . implode(", ", $blob_fields) . " INTO " . implode (", ", $blob_placeholders);
+      $query .= " RETURNING " . implode('", "', $blob_fields) . " INTO " . implode (", ", $blob_placeholders);
     }
 
     return $query;
