@@ -6,7 +6,12 @@ require_once dirname(__FILE__) . '/simpletest/reporter.php';
 class DrupalWebTestCase extends UnitTestCase {
 
   function setUp() {
-    shell_exec("sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @" . dirname(__FILE__) . "/drupal_web_test_case.sql");
+    if (strpos(dirname(__FILE__), 'mysql')) {
+      shell_exec("mysql -u root --password='CHANGE' < " . dirname(__FILE__) . "/drupal_web_test_case.mysql.sql");
+    }
+    elseif (strpos(dirname(__FILE__), 'oci')) {
+      shell_exec("sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @" . dirname(__FILE__) . "/drupal_web_test_case.oci.sql");
+    }
   }
 
   public static function randomString($length = 8) {
@@ -26,7 +31,6 @@ class DrupalWebTestCase extends UnitTestCase {
     }
     return $str;
   }
-
 }
 
 class DrupalHtmlReporter extends HtmlReporter {
@@ -39,7 +43,6 @@ class DrupalHtmlReporter extends HtmlReporter {
     print implode(" -&gt; ", $breadcrumb);
     print " -&gt; " . $this->htmlEntities($message) . "<br />\n";
   }
-
 }
 
 function dpr($input, $return = FALSE, $name = NULL) {
