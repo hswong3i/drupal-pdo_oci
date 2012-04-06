@@ -109,7 +109,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     $sql_keys = array();
     if (isset($table['primary key']) && is_array($table['primary key'])) {
-      $sql_keys[] = 'CONSTRAINT "' . $this->prefixNonTable($name, $table['primary key'], 'pk') . '" PRIMARY KEY ("' . implode('", "', $table['primary key']) . '")';
+      $sql_keys[] = 'CONSTRAINT "' . $this->prefixNonTable($name, 'pk') . '" PRIMARY KEY ("' . implode('", "', $table['primary key']) . '")';
     }
     if (isset($table['unique keys']) && is_array($table['unique keys'])) {
       foreach ($table['unique keys'] as $key_name => $key) {
@@ -133,7 +133,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     }
 
     foreach ($table['fields'] as $field_name => $field) {
-      if ($field['type'] == 'serial') {
+      if (isset($field['type']) && ($field['type'] == 'serial')) {
         $statements[] = $this->_createSequenceSql($name, $field_name);
         $statements[] = $this->_createTriggerSql($name, $field_name);
       }
@@ -184,7 +184,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     }
 
     if (!empty($spec['unsigned'])) {
-      $sql .= " CHECK ($name >= 0)";
+      $sql .= ' CHECK ("' . $name . '" >= 0)';
     }
 
     if (isset($spec['default'])) {

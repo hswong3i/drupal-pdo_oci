@@ -125,6 +125,7 @@ class SchemaTestCase extends DrupalWebTestCase {
           'mysql_type' => 'timestamp',
           'pgsql_type' => 'timestamp',
           'sqlite_type' => 'datetime',
+          'oci_type' => 'timestamp',
           'not null' => FALSE,
           'default' => NULL,
         ),
