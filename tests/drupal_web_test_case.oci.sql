@@ -31,7 +31,7 @@ CREATE TABLE test (
   age INT DEFAULT 0 NOT NULL CHECK (age >= 0),
   job VARCHAR2(255) DEFAULT 'Undefined' NOT NULL,
   CONSTRAINT test_pk PRIMARY KEY (id),
-  CONSTRAINT test_name_key UNIQUE (name)
+  CONSTRAINT test_name_uix UNIQUE (name)
 );
 
 CREATE INDEX test_ages_idx ON test (age);
@@ -60,7 +60,7 @@ CREATE TABLE test_people (
   age INT DEFAULT 0 NOT NULL CHECK (age >= 0),
   job VARCHAR2(255) DEFAULT '' NOT NULL,
   CONSTRAINT test_people_pk PRIMARY KEY (job),
-  CONSTRAINT test_people_name_key UNIQUE (name)
+  CONSTRAINT test_people_name_uix UNIQUE (name)
 );
 
 CREATE INDEX test_people_ages_idx ON test_people (age);

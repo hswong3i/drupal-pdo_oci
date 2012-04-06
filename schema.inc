@@ -35,20 +35,21 @@ class DatabaseSchema_oci extends DatabaseSchema {
    *   An object with two member variables:
    *     - 'blob_fields' that lists all the blob fields in the table.
    */
-  public function queryTableInformation($table) {
+  public function queryTableInformation($table, $rebuild = FALSE) {
     // Generate a key to reference this table's information on.
     $key = $this->connection->prefixTables('{' . $table . '}');
     if (!strpos($key, '.')) {
       $key = 'public.' . $key;
     }
 
-    if (!isset($this->tableInformation[$key])) {
+    if (!isset($this->tableInformation[$key]) || $rebuild) {
       // Split the key into schema and table for querying.
       list($schema, $table_name) = explode('.', $key);
       $table_information = (object) array(
         'blob_fields' => array(),
         'sequences' => array(),
         'serial_fields' => array(),
+        'indexes' => array(),
       );
       // Don't use {} around user_tab_cols table.
       $result = $this->connection->query('SELECT COLUMN_NAME, DATA_TYPE, DATA_DEFAULT FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name', array(':table_name' => $table_name));
@@ -57,6 +58,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
           $table_information->blob_fields[$column->column_name] = TRUE;
         }
       }
+      // Don't use {} around user_constraints and user_cons_columns table.
       $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER", array(':table_name' => $table_name));
       foreach ($result as $column) {
         $sequence = $this->connection->makeSequenceName($column->table_name, $column->column_name);
@@ -64,6 +66,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
           $table_information->sequences[] = $sequence;
           $table_information->serial_fields[] = $column->column_name;
         }
+      }
+      // Don't use {} around user_indexes table.
+      $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => $table_name));
+      foreach ($result as $column) {
+        $table_information->indexes[$column->index_name] = TRUE;
       }
       $this->tableInformation[$key] = $table_information;
     }
@@ -180,15 +187,6 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $sql .= " CHECK ($name >= 0)";
     }
 
-    if (isset($spec['not null'])) {
-      if ($spec['not null']) {
-        $sql .= ' NOT NULL';
-      }
-      else {
-        $sql .= ' NULL';
-      }
-    }
-
     if (isset($spec['default'])) {
       if (in_array($spec['type'], array('blob'))) {
         $default = 'EMPTY_BLOB()';
@@ -197,6 +195,15 @@ class DatabaseSchema_oci extends DatabaseSchema {
         $default = is_string($spec['default']) ? "'" . $spec['default'] . "'" : $spec['default'];
       }
       $sql .= " DEFAULT $default";
+    }
+
+    if (isset($spec['not null'])) {
+      if ($spec['not null']) {
+        $sql .= ' NOT NULL';
+      }
+      else {
+        $sql .= ' NULL';
+      }
     }
 
     return $sql;
@@ -297,7 +304,12 @@ class DatabaseSchema_oci extends DatabaseSchema {
     }
 
     // TODO: $schema = drupal_get_schema($table);
+    $table_information = $this->queryTableInformation($table, TRUE);
     // TODO: Drop Indexes and Trigger for $table.
+    foreach ($table_information->indexes as $index => $value) {
+      $new_index = strtr($index, array($table => $new_name));
+      $this->connection->query('ALTER INDEX "' . $index . '" RENAME TO "' . $new_index . '"');
+    }
 
     $info = $this->getPrefixInfo($new_name);
     $this->connection->query('ALTER TABLE "{' . $table . '}" RENAME TO "' . $info['table'] . '"');
@@ -332,9 +344,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $spec['not null'] = FALSE;
     }
 
-    $query = 'ALTER TABLE "{' . $table . '}" ADD (';
+    $query = 'ALTER TABLE "{' . $table . '}" ADD ';
     $query .= $this->createFieldSql($field, $this->processField($spec));
-    $query .= ')';
     $this->connection->query($query);
 
     if (isset($spec['initial'])) {
@@ -440,7 +451,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     if (!$this->tableExists($table)) {
       throw new DatabaseSchemaObjectDoesNotExistException(t("Cannot add unique key %name to table %table: table doesn't exist.", array('%table' => $table, '%name' => $name)));
     }
-    if ($this->constraintExists($table, $name . 'uix')) {
+    if ($this->constraintExists($table, $name, 'uix')) {
       throw new DatabaseSchemaObjectExistsException(t("Cannot add unique key %name to table %table: unique key already exists.", array('%table' => $table, '%name' => $name)));
     }
 
@@ -448,7 +459,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
   }
 
   public function dropUniqueKey($table, $name) {
-    if (!$this->constraintExists($table, $name . 'uix')) {
+    if (!$this->constraintExists($table, $name, 'uix')) {
       return FALSE;
     }
 
