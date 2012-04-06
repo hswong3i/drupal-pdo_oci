@@ -303,19 +303,25 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot rename %table to %table_new: table %table_new already exists.", array('%table' => $table, '%table_new' => $new_name)));
     }
 
-    // TODO: $schema = drupal_get_schema($table);
+    $info = $this->getPrefixInfo($new_name);
     $table_information = $this->queryTableInformation($table, TRUE);
-    // TODO: Drop Indexes and Trigger for $table.
+
+    // Rename Table.
+    $this->connection->query('ALTER TABLE "{' . $table . '}" RENAME TO "' . $info['table'] . '"');
+
+    // Rename Indexes.
     foreach ($table_information->indexes as $index => $value) {
       $new_index = strtr($index, array($table => $new_name));
       $this->connection->query('ALTER INDEX "' . $index . '" RENAME TO "' . $new_index . '"');
     }
 
-    $info = $this->getPrefixInfo($new_name);
-    $this->connection->query('ALTER TABLE "{' . $table . '}" RENAME TO "' . $info['table'] . '"');
-
-    // TODO: Rename Sequence (Don't drop!!).
-    // TODO: Create Indexes and Trigger for $new_name.
+    // Drop Trigger, rename Sequence, and re-create Trigger.
+    if (!empty($table_information->serial_fields)) {
+      $field = $table_information->serial_fields[0];
+      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
+      $this->connection->query('RENAME "' . $this->connection->makeSequenceName($table, $field) . '" TO "' . $this->connection->makeSequenceName($new_name, $field) . '"');
+      $this->connection->query($this->_createTriggerSql($new_name, $field));
+    }
   }
 
   public function dropTable($table) {
@@ -323,8 +329,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    // TODO: $schema = drupal_get_schema($table);
-    // TODO: Drop Indexes, Sequence and Trigger for $table.
+    $table_information = $this->queryTableInformation($table, TRUE);
+
+    // Drop Trigger and Sequence.
+    if (!empty($table_information->serial_fields)) {
+      $field = $table_information->serial_fields[0];
+      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
+      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field) . '"');
+    }
 
     $this->connection->query('DROP TABLE "{' . $table . '}" CASCADE CONSTRAINTS');
     return TRUE;
@@ -364,6 +376,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $this->_createKeys($table, $new_keys);
     }
 
+    // Add Trigger and Sequence.
     if ($spec['type'] == 'serial') {
       $this->connection->query($this->_createSequenceSql($table, $field));
       $this->connection->query($this->_createTriggerSql($table, $field));
@@ -380,8 +393,13 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    // TODO: $schema = drupal_get_schema($table);
-    // TODO: Drop Indexes, Sequence and Trigger for $table.
+    $table_information = $this->queryTableInformation($table, TRUE);
+
+    // Drop Trigger and Sequence.
+    if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
+      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
+      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field) . '"');
+    }
 
     $this->connection->query('ALTER TABLE "{' . $table . '}" DROP COLUMN "' . $field . '"');
     return TRUE;
@@ -421,7 +439,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $args = func_get_args();
 
     $info = $this->getPrefixInfo($table);
-    $constraint_name = $this->prefixNonTable($table, $args);
+    $constraint_name = implode('_', $args);
 
     // Don't use {} around user_cons_columns table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_CONS_COLUMNS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => $info['table'], ':column_name' => $constraint_name))->fetchField();
@@ -435,7 +453,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot add primary key to table %table: primary key already exists.", array('%table' => $table)));
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '} ADD CONSTRAINT "' . $this->prefixNonTable($table, $fields, 'pk') . '" PRIMARY KEY ("' . implode('", "', $fields) . '")');
+    $this->connection->query('ALTER TABLE "{' . $table . '}" ADD CONSTRAINT "' . $this->prefixNonTable($table, 'pk') . '" PRIMARY KEY ("' . implode('", "', $fields) . '")');
   }
 
   public function dropPrimaryKey($table) {
@@ -495,81 +513,42 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot rename field %table.%name to %name_new: target field already exists.", array('%table' => $table, '%name' => $field, '%name_new' => $field_new)));
     }
 
-    $spec = $this->processField($spec);
+    $table_information = $this->queryTableInformation($table, TRUE);
 
-    // We need to typecast the new column to best be able to transfer the data
-    // Schema_oci::getFieldTypeMap() will return possibilities that are not
-    // 'cast-able' such as 'serial' - so they need to be casted int instead.
-    if (in_array($spec['oci_type'], array('serial', 'bigserial', 'numeric'))) {
-      $typecast = 'int';
-    }
-    else {
-      $typecast = $spec['oci_type'];
-    }
+    $not_null = isset($spec['not null']) ? $spec['not null'] : FALSE;
+    unset($spec['not null']);
 
-    if (in_array($spec['oci_type'], array('varchar', 'character', 'text')) && isset($spec['length'])) {
-      $typecast .= '(' . $spec['length'] . ')';
-    }
-    elseif (isset($spec['precision']) && isset($spec['scale'])) {
-      $typecast .= '(' . $spec['precision'] . ', ' . $spec['scale'] . ')';
+    $spec['size'] = isset($spec['size']) ? $spec['size'] : 'normal';
+
+    // Drop Trigger and rename Sequence.
+    if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
+      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
+      $this->connection->query('RENAME "' . $this->connection->makeSequenceName($table, $field) . '" TO "' . $this->connection->makeSequenceName($table, $field) . '_old"');
     }
 
-    // Remove old check constraints.
-    $field_info = $this->queryFieldInformation($table, $field);
+    // Backup legacy field data.
+    $this->connection->query('ALTER TABLE "{' . $table . '}" RENAME COLUMN "' . $field . '" TO "' . $field . '_old"');
 
-    foreach ($field_info as $check) {
-      $this->connection->query('ALTER TABLE {' . $table . '} DROP CONSTRAINT "' . $check . '"');
+    // Add new field and transfer legacy data.
+    $this->addField($table, $field_new, $spec);
+    $this->connection->query('UPDATE "{' . $table . '}" SET "' . $field_new . '" = "' . $field . '_old"');
+
+    if ($not_null) {
+      $this->connection->query('ALTER TABLE "{' . $table . '}" MODIFY ("' . $field_new . '" NOT NULL)');
     }
 
-    // Remove old default.
-    $this->fieldSetNoDefault($table, $field);
-
-    $this->connection->query('ALTER TABLE {' . $table . '} ALTER "' . $field . '" TYPE ' . $typecast . ' USING "' . $field . '"::' . $typecast);
-
-    if (isset($spec['not null'])) {
-      if ($spec['not null']) {
-        $nullaction = 'SET NOT NULL';
-      }
-      else {
-        $nullaction = 'DROP NOT NULL';
-      }
-      $this->connection->query('ALTER TABLE {' . $table . '} ALTER "' . $field . '" ' . $nullaction);
-    }
-
-    if (in_array($spec['oci_type'], array('serial', 'bigserial'))) {
-      // Type "serial" is known to PostgreSQL, but *only* during table creation,
-      // not when altering. Because of that, the sequence needs to be created
-      // and initialized by hand.
-      $seq = "{" . $table . "}_" . $field_new . "_seq";
-      $this->connection->query("CREATE SEQUENCE " . $seq);
-      // Set sequence to maximal field value to not conflict with existing
-      // entries.
-      $this->connection->query("SELECT setval('" . $seq . "', MAX(\"" . $field . '")) FROM {' . $table . "}");
-      $this->connection->query('ALTER TABLE {' . $table . '} ALTER "' . $field . '" SET DEFAULT nextval(\'' . $seq . '\')');
-    }
-
-    // Rename the column if necessary.
-    if ($field != $field_new) {
-      $this->connection->query('ALTER TABLE {' . $table . '} RENAME "' . $field . '" TO "' . $field_new . '"');
-    }
-
-    // Add unsigned check if necessary.
-    if (!empty($spec['unsigned'])) {
-      $this->connection->query('ALTER TABLE {' . $table . '} ADD CHECK ("' . $field_new . '" >= 0)');
-    }
-
-    // Add default if necessary.
-    if (isset($spec['default'])) {
-      $this->fieldSetDefault($table, $field_new, $spec['default']);
-    }
-
-    // Change description if necessary.
-    if (!empty($spec['description'])) {
-      $this->connection->query('COMMENT ON COLUMN {' . $table . '}."' . $field_new . '" IS ' . $this->prepareComment($spec['description']));
-    }
+    $this->dropField($table, $field . '_old');
 
     if (isset($new_keys)) {
       $this->_createKeys($table, $new_keys);
+    }
+
+    // Restore latest Sequence ID.
+    if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
+      $serial_value = $this->connection->query('SELECT "' . $this->connection->makeSequenceName($table, $field) . '_old".CURRVAL FROM DUAL')->fetchField();
+      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field) . '_old"');
+      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field_new) . '"');
+      $this->connection->query('CREATE SEQUENCE "' . $this->connection->makeSequenceName($table, $field_new) . '" MINVALUE 1 INCREMENT BY 1 START WITH :serial_value NOCACHE NOORDER NOCYCLE', array(':serial_value' => $serial_value));
     }
   }
 
@@ -584,13 +563,13 @@ class DatabaseSchema_oci extends DatabaseSchema {
   }
 
   protected function _createTriggerSql($table, $field) {
-    $query = 'CREATE OR REPLACE TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"';
-    $query .= 'BEFORE INSERT ON "{' . $table . '}"';
-    $query .= 'FOR EACH ROW';
-    $query .= 'WHEN (NEW.' . $field . ' IS NULL)';
-    $query .= 'BEGIN';
-    $query .= 'SELECT "' . $this->connection->makeSequenceName($table, $field) . '".NEXTVAL';
-    $query .= 'INTO :NEW."' . $field . '"';
+    $query = 'CREATE OR REPLACE TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '" ';
+    $query .= 'BEFORE INSERT ON "{' . $table . '}" ';
+    $query .= 'FOR EACH ROW ';
+    $query .= 'WHEN (NEW."' . $field . '" IS NULL) ';
+    $query .= 'BEGIN ';
+    $query .= 'SELECT "' . $this->connection->makeSequenceName($table, $field) . '".NEXTVAL ';
+    $query .= 'INTO :NEW."' . $field . '" ';
     $query .= 'FROM DUAL;';
     $query .= 'END;';
     return $query;

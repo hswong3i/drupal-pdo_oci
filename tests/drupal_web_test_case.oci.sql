@@ -24,6 +24,8 @@ GRANT "GATHER_SYSTEM_STATISTICS" TO test;
 -- Connect as user "test".
 CONNECT test@AL32UTF8/CHANGE
 
+EXIT;
+
 -- $schema['test'].
 CREATE TABLE test (
   id INT NOT NULL CHECK (id >= 0),

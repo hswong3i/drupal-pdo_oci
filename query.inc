@@ -72,8 +72,8 @@ class InsertQuery_oci extends InsertQuery {
             // column should only be done in very rare cases and is not thread
             // safe by definition.
             $current_value = $this->connection->lastInsertId($table_information->sequences[$index]);
-            $this->connection->query('DROP SEQUENCE ' . $table_information->sequences[$index]);
-            $this->connection->query('CREATE SEQUENCE ' . $table_information->sequences[$index] . ' START WITH :serial_value', array(':serial_value' => max((int) $serial_value, (int) $current_value)));
+            $this->connection->query('DROP SEQUENCE "' . $table_information->sequences[$index]) . '"';
+            $this->connection->query('CREATE SEQUENCE "' . $table_information->sequences[$index] . '" MINVALUE 1 INCREMENT BY 1 START WITH ' . max($serial_value, $current_value) . ' NOCACHE NOORDER NOCYCLE');
           }
         }
       }

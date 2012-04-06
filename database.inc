@@ -149,17 +149,17 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
     // When Oracle gets a value too small then it will lock the table,
     // retry the INSERT and if is's still too small than alter the sequence.
-    $id = $this->query("SELECT " . $sequence_name . ".NEXTVAL FROM DUAL")->fetchField();
+    $id = $this->query('SELECT "' . $sequence_name . '".NEXTVAL FROM DUAL')->fetchField();
     if ($id > $existing_id) {
       return $id;
     }
 
     // Reset the sequence to a higher value than the existing id.
-    $this->query("DROP SEQUENCE " . $sequence_name);
-    $this->query("CREATE SEQUENCE " . $sequence_name . " START WITH " . ($existing_id + 1));
+    $this->query('DROP SEQUENCE "' . $sequence_name . '"');
+    $this->query('CREATE SEQUENCE "' . $sequence_name. '" MINVALUE 1 INCREMENT BY 1 START WITH ' . ($existing_id + 1) . ' NOCACHE NOORDER NOCYCLE');
 
     // Retrive the next id. We know this will be as high as we want it.
-    $id = $this->query("SELECT ". $sequence_name . ".NEXTVAL FROM DUAL")-> fetchField();
+    $id = $this->query('SELECT "'. $sequence_name . '".NEXTVAL FROM DUAL')-> fetchField();
 
     return $id;
   }
@@ -169,7 +169,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
       throw new Exception('The name of the sequence is mandatory for Oracle.');
     }
 
-    return $this->query("SELECT " . $name . ".CURRVAL FROM DUAL")->fetchField();
+    return $this->query('SELECT "' . $name . '".CURRVAL FROM DUAL')->fetchField();
   }
 }
 
