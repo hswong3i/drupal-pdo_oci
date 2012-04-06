@@ -62,7 +62,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER", array(':table_name' => $table_name));
       foreach ($result as $column) {
         $sequence = $this->connection->makeSequenceName($column->table_name, $column->column_name);
-        if ($this->constraintExists($sequence_name)) {
+        if ($this->constraintExists($sequence)) {
           $table_information->sequences[] = $sequence;
           $table_information->serial_fields[] = $column->column_name;
         }
@@ -173,20 +173,23 @@ class DatabaseSchema_oci extends DatabaseSchema {
       unset($spec['not null']);
     }
 
-    if (in_array($spec['oci_type'], array('VARCHAR2', 'CHAR', 'NUMBER')) && isset($spec['length'])) {
-      $sql .= '(' . $spec['length'] . ')';
-    }
-    elseif ($spec['oci_type'] == 'VARCHAR2') {
-      $sql .= '(4000)';
+    // With poor Oracle we have a lots of limitation.
+    if (isset($spec['length'])) {
+      if ($spec['oci_type'] == 'VARCHAR2') {
+        $sql .= '(' . min($spec['length'], 4000) . ')';
+      }
+      elseif ($spec['oci_type'] == 'CHAR') {
+        $sql .= '(' . min($spec['length'], 2000) . ')';
+      }
+      elseif ($spec['oci_type'] == 'NUMBER') {
+        $sql .= '(' . min($spec['length'], 38) . ')';
+      }
     }
     elseif (isset($spec['precision']) && isset($spec['scale'])) {
-      $sql .= '(' . $spec['precision'] . ', ' . $spec['scale'] . ')';
+      $sql .= '(' . min($spec['precision'], 38) . ', ' . $spec['scale'] . ')';
     }
 
-    if (!empty($spec['unsigned'])) {
-      $sql .= ' CHECK ("' . $name . '" >= 0)';
-    }
-
+    // Oracle require DEFAULT before NULL.
     if (isset($spec['default'])) {
       if (in_array($spec['type'], array('blob'))) {
         $default = 'EMPTY_BLOB()';
@@ -204,6 +207,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
       else {
         $sql .= ' NULL';
       }
+    }
+
+    // Oracle require CHECK constraint as the last condition.
+    if (!empty($spec['unsigned'])) {
+      $sql .= ' CHECK ("' . $name . '" >= 0)';
     }
 
     return $sql;
@@ -365,11 +373,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
       // $this->connection->update($table)
       //   ->fields(array($field => $spec['initial']))
       //   ->execute();
-      $this->connection->query('UPDATE "{' . $table . '}" SET "' . $field . '" = :initial', array(':initial', $spec['initial']));
+      $this->connection->query('UPDATE "{' . $table . '}" SET "' . $field . '" = :initial_value', array(':initial_value' => $spec['initial']));
     }
 
     if ($fixnull) {
-      $this->connection->query('ALTER TABLE "{' . $table . '}" ALTER "' . $field . '" SET NOT NULL');
+      $this->connection->query('ALTER TABLE "{' . $table . '}" MODIFY ("' . $field . '" NOT NULL)');
     }
 
     if (isset($new_keys)) {

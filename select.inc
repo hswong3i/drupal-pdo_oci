@@ -12,6 +12,12 @@
 
 class SelectQuery_oci extends SelectQuery {
 
+  public function __construct($table, $alias = NULL, DatabaseConnection $connection, $options = array()) {
+    parent::__construct($table, $alias, $connection, $options);
+    $this->where = new DatabaseCondition_oci('AND');
+    $this->having = new DatabaseCondition_oci('AND');
+  }
+
   public function __toString() {
     // For convenience, we compile the query ourselves if the caller forgot
     // to do it. This allows constructs like "(string) $query" to work. When
@@ -34,16 +40,16 @@ class SelectQuery_oci extends SelectQuery {
     $fields = array();
     foreach ($this->tables as $alias => $table) {
       if (!empty($table['all_fields'])) {
-        $fields[] = $this->connection->escapeTable($alias) . '.*';
+        $fields[] = '"' . $this->connection->escapeTable($alias) . '".*';
       }
     }
     foreach ($this->fields as $alias => $field) {
       // Always use the AS keyword for field aliases, as some
       // databases require it (e.g., Oracle).
-      $fields[] = (isset($field['table']) ? $this->connection->escapeTable($field['table']) . '.' : '') . $this->connection->escapeField($field['field']) . ' AS ' . $this->connection->escapeAlias($field['alias']);
+      $fields[] = (isset($field['table']) ? '"' . $this->connection->escapeTable($field['table']) . '".' : '') . '"' . $this->connection->escapeField($field['field']) . '" AS "' . $this->connection->escapeAlias($field['alias']) . '"';
     }
     foreach ($this->expressions as $alias => $expression) {
-      $fields[] = $expression['expression'] . ' AS ' . $this->connection->escapeAlias($expression['alias']);
+      $fields[] = $expression['expression'] . ' AS "' . $this->connection->escapeAlias($expression['alias']) . '"';
     }
     $query .= implode(', ', $fields);
 
@@ -64,12 +70,12 @@ class SelectQuery_oci extends SelectQuery {
         $table_string = '(' . (string) $subquery . ')';
       }
       else {
-        $table_string = '{' . $this->connection->escapeTable($table['table']) . '}';
+        $table_string = '"{' . $this->connection->escapeTable($table['table']) . '}"';
       }
 
       // Don't use the AS keyword for table aliases, as some
       // databases don't support it (e.g., Oracle).
-      $query .=  $table_string . ' ' . $this->connection->escapeTable($table['alias']);
+      $query .=  $table_string . ' "' . $this->connection->escapeTable($table['alias']) . '"';
 
       if (!empty($table['condition'])) {
         $query .= ' ON ' . $table['condition'];
@@ -120,7 +126,7 @@ class SelectQuery_oci extends SelectQuery {
     // core-supported database, which rewrite the entire query structure, so
     // we need to override this method with alternate logic as LAST STEP.
     if (!empty($this->range)) {
-      $query = 'SELECT * FROM (SELECT sub1.*, ROWNUM AS line2 FROM (' . $query . ') sub1) WHERE line2 BETWEEN ' . ((int) $this->range['start'] + 1) . ' AND ' . ((int) $this->range['start'] + (int) $this->range['length']);
+      $query = 'SELECT * FROM (SELECT SUB1.*, ROWNUM AS LINE2 FROM (' . $query . ') SUB1) WHERE LINE2 BETWEEN ' . ((int) $this->range['start'] + 1) . ' AND ' . ((int) $this->range['start'] + (int) $this->range['length']);
     }
 
     return $query;
