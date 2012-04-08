@@ -72,8 +72,8 @@ class InsertQuery_oci extends InsertQuery {
             // column should only be done in very rare cases and is not thread
             // safe by definition.
             $current_value = $this->connection->lastInsertId($table_information->sequences[$index]);
-            $this->connection->query('DROP SEQUENCE "' . $table_information->sequences[$index]) . '"';
-            $this->connection->query('CREATE SEQUENCE "' . $table_information->sequences[$index] . '" MINVALUE 1 INCREMENT BY 1 START WITH ' . max($serial_value, $current_value) . ' NOCACHE NOORDER NOCYCLE');
+            $this->connection->query('DROP SEQUENCE ' . $table_information->sequences[$index]);
+            $this->connection->query('CREATE SEQUENCE ' . $table_information->sequences[$index] . ' MINVALUE 1 INCREMENT BY 1 START WITH ' . max($serial_value, $current_value) . ' NOCACHE NOORDER NOCYCLE');
           }
         }
       }
@@ -141,10 +141,10 @@ class InsertQuery_oci extends InsertQuery {
     // If we're selecting from a SelectQuery, finish building the query and
     // pass it back, as any remaining options are irrelevant.
     if (!empty($this->fromQuery)) {
-      return $comments . 'INSERT INTO "{' . $this->table . '}" ("' . implode('", "', $insert_fields) . '") ' . $this->fromQuery;
+      return $comments . 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') ' . $this->fromQuery;
     }
 
-    $query = $comments . 'INSERT INTO "{' . $this->table . '}" ("' . implode('", "', $insert_fields) . '") VALUES ';
+    $query = $comments . 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') VALUES ';
 
     $max_placeholder = 0;
     $values = array();
@@ -187,7 +187,7 @@ class InsertQuery_oci extends InsertQuery {
 
     // Oracle BLOB additional handling with RETURNING INTO.
     if (count($blob_fields)) {
-      $query .= " RETURNING " . implode('", "', $blob_fields) . " INTO " . implode (", ", $blob_placeholders);
+      $query .= ' RETURNING ' . implode(', ', $blob_fields) . ' INTO ' . implode (', ', $blob_placeholders);
     }
 
     return $query;
@@ -297,7 +297,7 @@ class UpdateQuery_oci extends UpdateQuery {
 
     // Oracle BLOB additional handling with RETURNING INTO.
     if (count($blob_fields)) {
-      $query .= " RETURNING " . implode(", ", $blob_fields) . " INTO " . implode (", ", $blob_placeholders);
+      $query .= ' RETURNING ' . implode(', ', $blob_fields) . ' INTO ' . implode (', ', $blob_placeholders);
     }
 
     return $query;
@@ -372,7 +372,7 @@ class DatabaseCondition_oci extends DatabaseCondition {
                 $placeholders[] = $placeholder;
               }
             }
-            $condition_fragments[] = ' ("' . $connection->escapeField($condition['field']) . '" ' . $operator['operator'] . ' ' . $operator['prefix'] . implode($operator['delimiter'], $placeholders) . $operator['postfix'] . ') ';
+            $condition_fragments[] = ' (' . $connection->escapeField($condition['field']) . ' ' . $operator['operator'] . ' ' . $operator['prefix'] . implode($operator['delimiter'], $placeholders) . $operator['postfix'] . ') ';
           }
         }
       }

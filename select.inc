@@ -40,16 +40,16 @@ class SelectQuery_oci extends SelectQuery {
     $fields = array();
     foreach ($this->tables as $alias => $table) {
       if (!empty($table['all_fields'])) {
-        $fields[] = '"' . $this->connection->escapeTable($alias) . '".*';
+        $fields[] = $this->connection->escapeTable($alias) . '.*';
       }
     }
     foreach ($this->fields as $alias => $field) {
       // Always use the AS keyword for field aliases, as some
       // databases require it (e.g., Oracle).
-      $fields[] = (isset($field['table']) ? '"' . $this->connection->escapeTable($field['table']) . '".' : '') . '"' . $this->connection->escapeField($field['field']) . '" AS "' . $this->connection->escapeAlias($field['alias']) . '"';
+      $fields[] = (isset($field['table']) ? $this->connection->escapeTable($field['table']) . '.' : '') .  $this->connection->escapeField($field['field']) . ' AS ' . $this->connection->escapeAlias($field['alias']);
     }
     foreach ($this->expressions as $alias => $expression) {
-      $fields[] = $expression['expression'] . ' AS "' . $this->connection->escapeAlias($expression['alias']) . '"';
+      $fields[] = $expression['expression'] . ' AS ' . $this->connection->escapeAlias($expression['alias']);
     }
     $query .= implode(', ', $fields);
 
@@ -70,12 +70,12 @@ class SelectQuery_oci extends SelectQuery {
         $table_string = '(' . (string) $subquery . ')';
       }
       else {
-        $table_string = '"{' . $this->connection->escapeTable($table['table']) . '}"';
+        $table_string = '{' . $this->connection->escapeTable($table['table']) . '}';
       }
 
       // Don't use the AS keyword for table aliases, as some
       // databases don't support it (e.g., Oracle).
-      $query .=  $table_string . ' "' . $this->connection->escapeTable($table['alias']) . '"';
+      $query .=  $table_string . ' ' . $this->connection->escapeTable($table['alias']);
 
       if (!empty($table['condition'])) {
         $query .= ' ON ' . $table['condition'];

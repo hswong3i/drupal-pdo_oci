@@ -87,7 +87,7 @@ class SchemaTestCase extends DrupalWebTestCase {
     $this->assertTrue($this->tryInsert('test_table2'), t('Insert into the new table succeeded.'));
 
     // We should have successfully inserted exactly two rows.
-    $count = db_query('SELECT COUNT(*) FROM "{test_table2}"')->fetchField();
+    $count = db_query('SELECT COUNT(*) FROM {test_table2}')->fetchField();
     $this->assertEqual($count, 2, t('Two fields were successfully inserted.'));
 
     // Try to drop the table.
@@ -109,12 +109,12 @@ class SchemaTestCase extends DrupalWebTestCase {
     $this->checkSchemaComment('Changed column description.', 'test_table', 'test_serial');
 
     $this->assertTrue($this->tryInsert(), t('Insert with a serial succeeded.'));
-    $max1 = db_query('SELECT MAX("test_serial") FROM "{test_table}"')->fetchField();
+    $max1 = db_query('SELECT MAX(test_serial) FROM {test_table}')->fetchField();
     $this->assertTrue($this->tryInsert(), t('Insert with a serial succeeded.'));
-    $max2 = db_query('SELECT MAX("test_serial") FROM "{test_table}"')->fetchField();
+    $max2 = db_query('SELECT MAX(test_serial) FROM {test_table}')->fetchField();
     $this->assertTrue($max2 > $max1, t('The serial is monotone.'));
 
-    $count = db_query('SELECT COUNT(*) FROM "{test_table}"')->fetchField();
+    $count = db_query('SELECT COUNT(*) FROM {test_table}')->fetchField();
     $this->assertEqual($count, 2, t('There were two rows.'));
 
     // Use database specific data type and ensure that table is created.

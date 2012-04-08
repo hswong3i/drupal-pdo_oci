@@ -52,14 +52,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
         'indexes' => array(),
       );
       // Don't use {} around user_tab_cols table.
-      $result = $this->connection->query('SELECT COLUMN_NAME, DATA_TYPE, DATA_DEFAULT FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name', array(':table_name' => $table_name));
+      $result = $this->connection->query('SELECT COLUMN_NAME, DATA_TYPE, DATA_DEFAULT FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
         if ($column->data_type == 'BLOB') {
           $table_information->blob_fields[$column->column_name] = TRUE;
         }
       }
-      // Don't use {} around user_constraints and user_cons_columns table.
-      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER", array(':table_name' => $table_name));
+      // Don't use {} around user_constraints and user_cons_columns table/
+      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER", array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
         $sequence = $this->connection->makeSequenceName($column->table_name, $column->column_name);
         if ($this->constraintExists($sequence)) {
@@ -68,7 +68,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
         }
       }
       // Don't use {} around user_indexes table.
-      $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => $table_name));
+      $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
         $table_information->indexes[$column->index_name] = TRUE;
       }
@@ -81,14 +81,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $info = $this->getPrefixInfo($table);
 
     // Don't use {} around user_tables table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME LIKE :table_name', array(':table_name' => $info['table']))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($info['table'])))->fetchField();
   }
 
   public function fieldExists($table, $column) {
     $info = $this->getPrefixInfo($table);
 
     // Don't use {} around user_tab_cols table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME LIKE :table_name AND COLUMN_NAME LIKE :column_name', array(':table_name' => $info['table'], ':column_name' => $column))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($column)))->fetchField();
   }
 
   /**
@@ -102,6 +102,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
    *   An array of SQL statements to create the table.
    */
   protected function createTableSql($name, $table) {
+    $info = $this->getPrefixInfo($name);
+
     $sql_fields = array();
     foreach ($table['fields'] as $field_name => $field) {
       $sql_fields[] = $this->createFieldSql($field_name, $this->processField($field));
@@ -109,15 +111,15 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     $sql_keys = array();
     if (isset($table['primary key']) && is_array($table['primary key'])) {
-      $sql_keys[] = 'CONSTRAINT "' . $this->prefixNonTable($name, 'pk') . '" PRIMARY KEY ("' . implode('", "', $table['primary key']) . '")';
+      $sql_keys[] = 'CONSTRAINT ' . $this->prefixNonTable($name, 'pk') . ' PRIMARY KEY (' . implode(', ', $table['primary key']) . ')';
     }
     if (isset($table['unique keys']) && is_array($table['unique keys'])) {
       foreach ($table['unique keys'] as $key_name => $key) {
-        $sql_keys[] = 'CONSTRAINT "' . $this->prefixNonTable($name, $key_name, 'uix') . '" UNIQUE ("' . implode('", "', $key) . '")';
+        $sql_keys[] = 'CONSTRAINT ' . $this->prefixNonTable($name, $key_name, 'uix') . ' UNIQUE (' . implode(', ', $key) . ')';
       }
     }
 
-    $sql = 'CREATE TABLE "{' . $name . '}" ' . "(\n\t";
+    $sql = 'CREATE TABLE {' . $name . '} ' . "(\n\t";
     $sql .= implode(",\n\t", $sql_fields);
     if (count($sql_keys) > 0) {
       $sql .= ",\n\t";
@@ -141,13 +143,13 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add table comment.
     if (!empty($table['description'])) {
-      $statements[] = 'COMMENT ON TABLE "{' . $name . '}" IS ' . $this->prepareComment($table['description']);
+      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $info['table'] . ' IS ' . $this->prepareComment($table['description']));
     }
 
     // Add column comments.
     foreach ($table['fields'] as $field_name => $field) {
       if (!empty($field['description'])) {
-        $statements[] = 'COMMENT ON COLUMN "{' . $name . '}"."' . $field_name . '" IS ' . $this->prepareComment($field['description']);
+        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $info['table'] . '.' . $field_name . ' IS ' . $this->prepareComment($field['description']));
       }
     }
 
@@ -167,7 +169,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
    *    The field specification, as per the schema data structure format.
    */
   protected function createFieldSql($name, $spec) {
-    $sql = '"' . $name . '" ' . $spec['oci_type'];
+    $sql = $name . ' ' . $spec['oci_type'];
 
     if (isset($spec['type']) && $spec['type'] == 'serial') {
       unset($spec['not null']);
@@ -211,7 +213,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Oracle require CHECK constraint as the last condition.
     if (!empty($spec['unsigned'])) {
-      $sql .= ' CHECK ("' . $name . '" >= 0)';
+      $sql .= ' CHECK (' . $name . ' >= 0)';
     }
 
     return $sql;
@@ -294,10 +296,10 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $return = array();
     foreach ($fields as $field) {
       if (is_array($field)) {
-        $return[] = 'SUBSTR("' . $field[0] . '", 1, ' . $field[1] . ')';
+        $return[] = 'SUBSTR(' . $field[0] . ', 1, ' . $field[1] . ')';
       }
       else {
-        $return[] = '"' . $field . '"';
+        $return[] = $field;
       }
     }
     return implode(', ', $return);
@@ -315,19 +317,19 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $table_information = $this->queryTableInformation($table, TRUE);
 
     // Rename Table.
-    $this->connection->query('ALTER TABLE "{' . $table . '}" RENAME TO "' . $info['table'] . '"');
+    $this->connection->query('ALTER TABLE {' . strtoupper($table) . '} RENAME TO ' . strtoupper($info['table']));
 
     // Rename Indexes.
     foreach ($table_information->indexes as $index => $value) {
-      $new_index = strtr($index, array($table => $new_name));
-      $this->connection->query('ALTER INDEX "' . $index . '" RENAME TO "' . $new_index . '"');
+      $new_index = strtr($index, array(strtoupper($table) => strtoupper($new_name)));
+      $this->connection->query('ALTER INDEX ' . strtoupper($index) . ' RENAME TO ' . strtoupper($new_index));
     }
 
     // Drop Trigger, rename Sequence, and re-create Trigger.
     if (!empty($table_information->serial_fields)) {
       $field = $table_information->serial_fields[0];
-      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
-      $this->connection->query('RENAME "' . $this->connection->makeSequenceName($table, $field) . '" TO "' . $this->connection->makeSequenceName($new_name, $field) . '"');
+      $this->connection->query('DROP TRIGGER ' . strtoupper($this->prefixNonTable($table, $field, 'trg')));
+      $this->connection->query('RENAME ' . strtoupper($this->connection->makeSequenceName($table, $field)) . ' TO ' . strtoupper($this->connection->makeSequenceName($new_name, $field)));
       $this->connection->query($this->_createTriggerSql($new_name, $field));
     }
   }
@@ -342,11 +344,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
     // Drop Trigger and Sequence.
     if (!empty($table_information->serial_fields)) {
       $field = $table_information->serial_fields[0];
-      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
-      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field) . '"');
+      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
+      $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
     }
 
-    $this->connection->query('DROP TABLE "{' . $table . '}" CASCADE CONSTRAINTS');
+    $this->connection->query('DROP TABLE {' . $table . '} CASCADE CONSTRAINTS');
     return TRUE;
   }
 
@@ -364,7 +366,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $spec['not null'] = FALSE;
     }
 
-    $query = 'ALTER TABLE "{' . $table . '}" ADD ';
+    $query = 'ALTER TABLE {' . $table . '} ADD ';
     $query .= $this->createFieldSql($field, $this->processField($spec));
     $this->connection->query($query);
 
@@ -373,11 +375,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
       // $this->connection->update($table)
       //   ->fields(array($field => $spec['initial']))
       //   ->execute();
-      $this->connection->query('UPDATE "{' . $table . '}" SET "' . $field . '" = :initial_value', array(':initial_value' => $spec['initial']));
+      $this->connection->query('UPDATE {' . $table . '} SET ' . $field . ' = :initial_value', array(':initial_value' => $spec['initial']));
     }
 
     if ($fixnull) {
-      $this->connection->query('ALTER TABLE "{' . $table . '}" MODIFY ("' . $field . '" NOT NULL)');
+      $this->connection->query('ALTER TABLE {' . $table . '} MODIFY (' . $field . ' NOT NULL)');
     }
 
     if (isset($new_keys)) {
@@ -392,7 +394,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add column comment.
     if (!empty($spec['description'])) {
-      $this->connection->query('COMMENT ON COLUMN "{' . $table . '}"."' . $field . '" IS ' . $this->prepareComment($spec['description']));
+      $stmt = $this->connection->prepare('COMMENT ON COLUMN ' . $table . '.' . $field . ' IS ' . $this->prepareComment($spec['description']));
+      $this->connection->query($stmt);
     }
   }
 
@@ -405,11 +408,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Drop Trigger and Sequence.
     if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
-      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
-      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field) . '"');
+      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
+      $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '}" DROP COLUMN "' . $field . '"');
+    $this->connection->query('ALTER TABLE {' . $table . '} DROP COLUMN ' . $field);
     return TRUE;
   }
 
@@ -425,7 +428,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $default = is_string($default) ? "'$default'" : $default;
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '}" MODIFY ("' . $field . '" DEFAULT ' . $default . ')');
+    $this->connection->query('ALTER TABLE {' . $table . '} MODIFY (' . $field . ' DEFAULT ' . $default . ')');
   }
 
   public function fieldSetNoDefault($table, $field) {
@@ -433,14 +436,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectDoesNotExistException(t("Cannot remove default value of field %table.%field: field doesn't exist.", array('%table' => $table, '%field' => $field)));
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '}" MODIFY ("' . $field . '" DEFAULT NULL)');
+    $this->connection->query('ALTER TABLE {' . $table . '} MODIFY (' . $field . ' DEFAULT NULL)');
   }
 
   public function indexExists($table, $name) {
     $info = $this->getPrefixInfo($table);
 
     // Don't use {} around user_indexes table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE TABLE_NAME = :table_name AND INDEX_NAME = :index_name', array(':table_name' => $info['table'], ':index_name' => $this->prefixNonTable($info['table'], $name, 'ix')))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE TABLE_NAME = :table_name AND INDEX_NAME = :index_name', array(':table_name' => strtoupper($info['table']), ':index_name' => strtoupper($this->prefixNonTable($info['table'], $name, 'ix'))))->fetchField();
   }
 
   public function constraintExists($table) {
@@ -450,7 +453,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $constraint_name = implode('_', $args);
 
     // Don't use {} around user_cons_columns table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_CONS_COLUMNS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => $info['table'], ':column_name' => $constraint_name))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_CONS_COLUMNS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($constraint_name)))->fetchField();
   }
 
   public function addPrimaryKey($table, $fields) {
@@ -461,7 +464,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot add primary key to table %table: primary key already exists.", array('%table' => $table)));
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '}" ADD CONSTRAINT "' . $this->prefixNonTable($table, 'pk') . '" PRIMARY KEY ("' . implode('", "', $fields) . '")');
+    $this->connection->query('ALTER TABLE {' . $table . '} ADD CONSTRAINT ' . $this->prefixNonTable($table, 'pk') . ' PRIMARY KEY (' . implode(', ', $fields) . ')');
   }
 
   public function dropPrimaryKey($table) {
@@ -469,7 +472,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '}" DROP CONSTRAINT "' . $this->prefixNonTable($table, 'pk') . '"');
+    $this->connection->query('ALTER TABLE {' . $table . '} DROP CONSTRAINT ' . $this->prefixNonTable($table, 'pk'));
     return TRUE;
   }
 
@@ -481,7 +484,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot add unique key %name to table %table: unique key already exists.", array('%table' => $table, '%name' => $name)));
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '}" ADD CONSTRAINT "' . $this->prefixNonTable($table, $name, 'uix') . '" UNIQUE ("' . implode('", "', $fields) . '")');
+    $this->connection->query('ALTER TABLE {' . $table . '} ADD CONSTRAINT ' . $this->prefixNonTable($table, $name, 'uix') . ' UNIQUE (' . implode(', ', $fields) . ')');
   }
 
   public function dropUniqueKey($table, $name) {
@@ -489,7 +492,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    $this->connection->query('ALTER TABLE "{' . $table . '}" DROP CONSTRAINT "' . $this->prefixNonTable($table, $name, 'uix') . '"');
+    $this->connection->query('ALTER TABLE {' . $table . '} DROP CONSTRAINT ' . $this->prefixNonTable($table, $name, 'uix'));
     return TRUE;
   }
 
@@ -509,7 +512,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    $this->connection->query('DROP INDEX "' . $this->prefixNonTable($table, $name, 'ix') . '"');
+    $this->connection->query('DROP INDEX ' . $this->prefixNonTable($table, $name, 'ix'));
     return TRUE;
   }
 
@@ -530,19 +533,20 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Drop Trigger and rename Sequence.
     if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
-      $this->connection->query('DROP TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '"');
-      $this->connection->query('RENAME "' . $this->connection->makeSequenceName($table, $field) . '" TO "' . $this->connection->makeSequenceName($table, $field) . '_old"');
+      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
+      $serial_value = $this->connection->query('SELECT ' . strtoupper($this->connection->makeSequenceName($table, $field)) . ' CURRVAL FROM DUAL')->fetchField();
+      $this->connection->query('DROP SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field)));
     }
 
     // Backup legacy field data.
-    $this->connection->query('ALTER TABLE "{' . $table . '}" RENAME COLUMN "' . $field . '" TO "' . $field . '_old"');
+    $this->connection->query('ALTER TABLE {' . $table . '} RENAME COLUMN ' . $field . ' TO ' . $field . '_old');
 
     // Add new field and transfer legacy data.
     $this->addField($table, $field_new, $spec);
-    $this->connection->query('UPDATE "{' . $table . '}" SET "' . $field_new . '" = "' . $field . '_old"');
+    $this->connection->query('UPDATE {' . $table . '} SET ' . $field_new . ' = ' . $field . '_old');
 
     if ($not_null) {
-      $this->connection->query('ALTER TABLE "{' . $table . '}" MODIFY ("' . $field_new . '" NOT NULL)');
+      $this->connection->query('ALTER TABLE {' . $table . '} MODIFY (' . $field_new . ' NOT NULL)');
     }
 
     $this->dropField($table, $field . '_old');
@@ -553,31 +557,28 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Restore latest Sequence ID.
     if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
-      $serial_value = $this->connection->query('SELECT "' . $this->connection->makeSequenceName($table, $field) . '_old".CURRVAL FROM DUAL')->fetchField();
-      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field) . '_old"');
-      $this->connection->query('DROP SEQUENCE "' . $this->connection->makeSequenceName($table, $field_new) . '"');
-      $this->connection->query('CREATE SEQUENCE "' . $this->connection->makeSequenceName($table, $field_new) . '" MINVALUE 1 INCREMENT BY 1 START WITH :serial_value NOCACHE NOORDER NOCYCLE', array(':serial_value' => $serial_value));
+      $this->connection->query('DROP SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field_new)));
+      $this->connection->query('CREATE SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field_new)) . ' MINVALUE 1 INCREMENT BY 1 START WITH :serial_value NOCACHE NOORDER NOCYCLE', array(':serial_value' => $serial_value));
     }
   }
 
   protected function _createIndexSql($table, $name, $fields) {
-    $query = 'CREATE INDEX "' . $this->prefixNonTable($table, $name, 'ix') . '" ON "{' . $table . '}" (';
+    $query = 'CREATE INDEX ' . $this->prefixNonTable($table, $name, 'ix') . ' ON {' . $table . '} (';
     $query .= $this->_createKeySql($fields) . ')';
     return $query;
   }
 
   protected function _createSequenceSql($table, $field) {
-    return 'CREATE SEQUENCE "' . $this->connection->makeSequenceName($table, $field) . '" MINVALUE 1 INCREMENT BY 1 START WITH 1 NOCACHE NOORDER NOCYCLE';
+    return 'CREATE SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field)) . ' MINVALUE 1 INCREMENT BY 1 START WITH 1 NOCACHE NOORDER NOCYCLE';
   }
 
   protected function _createTriggerSql($table, $field) {
-    $query = 'CREATE OR REPLACE TRIGGER "' . $this->prefixNonTable($table, $field, 'trg') . '" ';
-    $query .= 'BEFORE INSERT ON "{' . $table . '}" ';
+    $query = 'CREATE OR REPLACE TRIGGER ' . $this->prefixNonTable($table, $field, 'trg') . ' ';
+    $query .= 'BEFORE INSERT ON {' . $table . '} ';
     $query .= 'FOR EACH ROW ';
-    $query .= 'WHEN (NEW."' . $field . '" IS NULL) ';
     $query .= 'BEGIN ';
-    $query .= 'SELECT "' . $this->connection->makeSequenceName($table, $field) . '".NEXTVAL ';
-    $query .= 'INTO :NEW."' . $field . '" ';
+    $query .= 'SELECT ' . $this->connection->makeSequenceName($table, $field) . '.NEXTVAL ';
+    $query .= 'INTO :NEW.' . $field . ' ';
     $query .= 'FROM DUAL;';
     $query .= 'END;';
     return $query;
@@ -606,10 +607,10 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $info = $this->getPrefixInfo($table);
     // Don't use {} around user_col_comments, user_tab_comments tables.
     if (isset($column)) {
-      return $this->connection->query('SELECT COMMENTS FROM USER_COL_COMMENTS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => $info['table'], ':column_name' => $column))->fetchField();
+      return $this->connection->query('SELECT COMMENTS FROM USER_COL_COMMENTS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($column)))->fetchField();
     }
     else {
-      return $this->connection->query('SELECT COMMENTS FROM USER_TAB_COMMENTS WHERE TABLE_NAME = :table_name', array(':table_name' => $info['table']))->fetchField();
+      return $this->connection->query('SELECT COMMENTS FROM USER_TAB_COMMENTS WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($info['table'])))->fetchField();
     }
   }
 }
