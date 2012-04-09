@@ -18,7 +18,7 @@ class InsertQuery_oci extends InsertQuery {
       return NULL;
     }
 
-    $stmt = $this->connection->prepareQuery((string) $this);
+    $stmt = $this->connection->prepareQuery((string) $this)->getStatement(NULL);
 
     // Fetch the list of blobs and sequences used on that table.
     $table_information = $this->connection->schema()->queryTableInformation($this->table);
@@ -203,7 +203,7 @@ class UpdateQuery_oci extends UpdateQuery {
 
     // Because we filter $fields the same way here and in __toString(), the
     // placeholders will all match up properly.
-    $stmt = $this->connection->prepareQuery((string) $this);
+    $stmt = $this->connection->prepareQuery((string) $this)->getStatement(NULL);
 
     // Fetch the list of blobs and sequences used on that table.
     $table_information = $this->connection->schema()->queryTableInformation($this->table);

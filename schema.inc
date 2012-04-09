@@ -52,25 +52,20 @@ class DatabaseSchema_oci extends DatabaseSchema {
         'indexes' => array(),
       );
       // Don't use {} around user_tab_cols table.
-      $result = $this->connection->query('SELECT COLUMN_NAME, DATA_TYPE, DATA_DEFAULT FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)));
+      $result = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND DATA_TYPE = 'BLOB'", array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
-        if ($column->data_type == 'BLOB') {
-          $table_information->blob_fields[$column->column_name] = TRUE;
-        }
+        $table_information->blob_fields[strtolower($column->column_name)] = TRUE;
       }
       // Don't use {} around user_constraints and user_cons_columns table/
       $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER", array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
-        $sequence = $this->connection->makeSequenceName($column->table_name, $column->column_name);
-        if ($this->constraintExists($sequence)) {
-          $table_information->sequences[] = $sequence;
-          $table_information->serial_fields[] = $column->column_name;
-        }
+        $table_information->sequences[] = $this->connection->makeSequenceName(strtolower($column->table_name), strtolower($column->column_name));
+        $table_information->serial_fields[] = strtolower($column->column_name);
       }
       // Don't use {} around user_indexes table.
       $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
-        $table_information->indexes[$column->index_name] = TRUE;
+        $table_information->indexes[strtolower($column->index_name)] = TRUE;
       }
       $this->tableInformation[$key] = $table_information;
     }
@@ -317,19 +312,19 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $table_information = $this->queryTableInformation($table, TRUE);
 
     // Rename Table.
-    $this->connection->query('ALTER TABLE {' . strtoupper($table) . '} RENAME TO ' . strtoupper($info['table']));
+    $this->connection->query('ALTER TABLE {' . $table . '} RENAME TO ' . $info['table']);
 
     // Rename Indexes.
     foreach ($table_information->indexes as $index => $value) {
-      $new_index = strtr($index, array(strtoupper($table) => strtoupper($new_name)));
-      $this->connection->query('ALTER INDEX ' . strtoupper($index) . ' RENAME TO ' . strtoupper($new_index));
+      $new_index = strtr($index, array($table => $new_name));
+      $this->connection->query('ALTER INDEX ' . $index . ' RENAME TO ' . $new_index);
     }
 
     // Drop Trigger, rename Sequence, and re-create Trigger.
     if (!empty($table_information->serial_fields)) {
       $field = $table_information->serial_fields[0];
-      $this->connection->query('DROP TRIGGER ' . strtoupper($this->prefixNonTable($table, $field, 'trg')));
-      $this->connection->query('RENAME ' . strtoupper($this->connection->makeSequenceName($table, $field)) . ' TO ' . strtoupper($this->connection->makeSequenceName($new_name, $field)));
+      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
+      $this->connection->query('RENAME ' . $this->connection->makeSequenceName($table, $field) . ' TO ' . $this->connection->makeSequenceName($new_name, $field));
       $this->connection->query($this->_createTriggerSql($new_name, $field));
     }
   }
@@ -534,8 +529,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
     // Drop Trigger and rename Sequence.
     if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
       $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
-      $serial_value = $this->connection->query('SELECT ' . strtoupper($this->connection->makeSequenceName($table, $field)) . ' CURRVAL FROM DUAL')->fetchField();
-      $this->connection->query('DROP SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field)));
+      $serial_value = $this->connection->query('SELECT ' . $this->connection->makeSequenceName($table, $field) . ' CURRVAL FROM DUAL')->fetchField();
+      $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
     }
 
     // Backup legacy field data.
@@ -557,8 +552,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Restore latest Sequence ID.
     if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
-      $this->connection->query('DROP SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field_new)));
-      $this->connection->query('CREATE SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field_new)) . ' MINVALUE 1 INCREMENT BY 1 START WITH :serial_value NOCACHE NOORDER NOCYCLE', array(':serial_value' => $serial_value));
+      $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field_new));
+      $this->connection->query('CREATE SEQUENCE ' . $this->connection->makeSequenceName($table, $field_new) . ' MINVALUE 1 INCREMENT BY 1 START WITH :serial_value NOCACHE NOORDER NOCYCLE', array(':serial_value' => $serial_value));
     }
   }
 
@@ -569,7 +564,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
   }
 
   protected function _createSequenceSql($table, $field) {
-    return 'CREATE SEQUENCE ' . strtoupper($this->connection->makeSequenceName($table, $field)) . ' MINVALUE 1 INCREMENT BY 1 START WITH 1 NOCACHE NOORDER NOCYCLE';
+    return 'CREATE SEQUENCE ' . $this->connection->makeSequenceName($table, $field) . ' MINVALUE 1 INCREMENT BY 1 START WITH 1 NOCACHE NOORDER NOCYCLE';
   }
 
   protected function _createTriggerSql($table, $field) {
