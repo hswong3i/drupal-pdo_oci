@@ -116,8 +116,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
     $query = $this->escapeReserved($query);
     $query = $this->escapeEmptyString($query);
     $query = $this->escapeLongIdentifiers($query);
-
-    // Call PDO::prepare.
     return $this->prepare($query);
   }
 
@@ -134,7 +132,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
   }
 
   public function escapeEmptyString($query) {
-    return preg_replace("/''/", "'E#'", $query);
+    return str_replace("''", "'E#'", $query);
   }
 
   public function escapeLongIdentifiers($query) {
@@ -142,27 +140,34 @@ class DatabaseConnection_oci extends DatabaseConnection {
   }
 
   public function escapeLongIdentifier($matches) {
-    global $long_identifiers;
+    global $databases;
 
     $match = $matches[0];
-    if (!isset($long_identifiers[$match])) {
-      require_once DRUPAL_ROOT . '/includes/install.inc';
-      $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
 
-      $shorthand = 'L#' . crc32($match);
+    $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
 
-      drupal_install_fix_file($settings_file, FILE_WRITABLE);
+    // Do we have the mapping?
+    if (!isset($databases['long_identifiers'][$match])) {
+      // Dirty workaround to prevent duplicate append of mapping.
+      include $settings_file;
 
-      $fh = fopen($settings_file, 'a') or die ('Cannot open file.');
-      $content = "\$long_identifiers['$match'] = '$shorthand';\n";
-      fwrite($fh, $content);
-      fclose($fh);
+      // Double check the mapping once again.
+      if (!isset($databases['long_identifiers'][$match])) {
+        // Generate the mapping with prefix.
+        $shorthand = 'L#' . crc32($match);
+        $databases['long_identifiers'][$match] = $shorthand;
+        $content = "\$databases['long_identifiers']['$match'] = '$shorthand';\n";
 
-      drupal_install_fix_file($settings_file, FILE_NOT_WRITABLE);
-      $long_identifiers[$match] = $shorthand;
+        // Save the long identifiers mapping to settings.php.
+        chmod($settings_file, 0666) or die ("Can't chmod($settings_file, 0666");
+        $fh = fopen($settings_file, 'a') or die ("Can't open file.");
+        fwrite($fh, $content);
+        fclose($fh);
+        chmod($settings_file, 0444) or die ("Can't chmod($settings_file, 0444");
+      }
     }
 
-    return $long_identifiers[$match];
+    return $databases['long_identifiers'][$match];
   }
 
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
@@ -272,13 +277,23 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     $this->driverOptions = $driver_options;
   }
 
+  public function escapeEmptyString($query) {
+    return $query === '' ? "E#" : $query;
+  }
+
+  public function escapeLongIdentifiers($query) {
+    return preg_replace_callback('/^[a-z0-9_]{31,}$/', array($this->dbh, 'escapeLongIdentifier'), $query);
+  }
+
   public function bindValue($parameter, $value, $data_type = PDO::PARAM_STR) {
-    $value = $this->dbh->escapeEmptyString($value);
+    $value = $this->escapeEmptyString($value);
+    $value = $this->escapeLongIdentifiers($value);
     return parent::bindValue($parameter, $value, $data_type);
   }
 
   public function bindParam($parameter, &$variable, $data_type = PDO::PARAM_STR, $length = 0, $driver_options = array()) {
-    $variable = $this->dbh->escapeEmptyString($variable);
+    $variable = $this->escapeEmptyString($variable);
+    $variable = $this->escapeLongIdentifiers($variable);
     return parent::bindParam($parameter, $variable, $data_type, $length, $driver_options);
   }
 
@@ -349,6 +364,100 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
 
   public function getStatement($query, &$args = array()) {
     return $this->dbh->PDOPrepare($this->queryString);
+  }
+
+  private function restoreEscaped($data) {
+    global $databases;
+
+    // Non-SELECT query therefore no return value?
+    if (empty($data)) {
+      return;
+    }
+
+    $long_identifiers = empty($databases['long_identifiers']) ? array() : $databases['long_identifiers'];
+    $shorthand = array_flip($long_identifiers);
+
+    // Standardize as array handling.
+    if ($is_object = is_object($data)) {
+      $data = (array) $data;
+    }
+    elseif ($is_string = is_string($data)) {
+      $data = array($data);
+    }
+
+    foreach ($data as $key => $value) {
+      $curr_key = $key;
+
+      // Column name is present as shorthand.
+      if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
+        $curr_key = $shorthand[$key];
+        $data[$curr_key] = $value;
+        unset($data[$key]);
+      }
+
+      // Value stored as empty string placeholder.
+      if (is_string($value) && $value === 'E#') {
+        $data[$curr_key] = '';
+      }
+      // Rare condition: why store a constraint name as value into column?
+      elseif (is_string($value) && strpos($value, 'L#') === 0 && isset($shorthand[$value])) {
+        $data[$curr_key] = $shorthand[$key];
+      }
+      // Recursive restore escaped ONLY IF original value is not string.
+      elseif (!is_string($data[$curr_key])) {
+        $data[$curr_key] = $this->restoreEscaped($value);
+      }
+    }
+
+    // Restore original data type.
+    if ($is_object) {
+      return (object) $data;
+    }
+    elseif ($is_string) {
+      return array_shift($data);
+    }
+
+    return $data;
+  }
+
+  public function current() {
+    return $this->restoreEscaped(parent::current());
+  }
+
+  public function next() {
+    return $this->restoreEscaped(parent::next());
+  }
+
+  public function fetch($fetch_style = NULL, $cursor_orientation = PDO::FETCH_ORI_NEXT, $cursor_offset = 0) {
+    return $this->restoreEscaped(parent::fetch($fetch_style, $cursor_orientation, $cursor_offset));
+  }
+
+  public function fetchField($index = 0) {
+    return $this->restoreEscaped(parent::fetchField($index));
+  }
+
+  public function fetchObject($class_name = stdClass, $ctor_args = array()) {
+    return $this->restoreEscaped(parent::fetchObject($class_name, $ctor_args));
+  }
+
+  public function fetchAssoc() {
+    return $this->restoreEscaped(parent::fetchAssoc());
+  }
+
+  public function fetchAll($fetch_style = NULL, $fetch_argument = NULL, $ctor_args = array()) {
+    return $this->restoreEscaped(parent::fetchAll($fetch_style, $fetch_argument, $ctor_args));
+  }
+
+  public function fetchCol($index = 0) {
+    return $this->restoreEscaped(parent::fetchCol($index));
+  }
+
+  public function fetchAllKeyed($key_index = 0, $value_index = 1) {
+    return $this->restoreEscaped(parent::fetchAllKeyed($key_index, $value_index));
+  }
+
+  public function fetchAllAssoc($key, $fetch = NULL) {
+    return $this->restoreEscaped(parent::fetchAllAssoc($key, $fetch));
   }
 }
 

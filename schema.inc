@@ -57,7 +57,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
         $table_information->blob_fields[strtolower($column->column_name)] = TRUE;
       }
       // Don't use {} around user_constraints and user_cons_columns table/
-      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER", array(':table_name' => strtoupper($table_name)));
+      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS  WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
         $table_information->sequences[] = $this->connection->makeSequenceName(strtolower($column->table_name), strtolower($column->column_name));
         $table_information->serial_fields[] = strtolower($column->column_name);

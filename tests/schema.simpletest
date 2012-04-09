@@ -172,7 +172,7 @@ class SchemaTestCase extends DrupalWebTestCase {
    */
   function testUnsignedColumns() {
     // First create the table with just a serial column.
-    $table_name = 'unst';
+    $table_name = 'unsigned_table';
     $table_spec = array(
       'fields' => array('serial_column' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE)),
       'primary key' => array('serial_column'),
@@ -304,7 +304,7 @@ class SchemaTestCase extends DrupalWebTestCase {
    */
   protected function assertFieldAdditionRemoval($field_spec) {
     // Try creating the field on a new table.
-    $table_name = 'tt_' . ($this->counter++);
+    $table_name = 'test_table_' . ($this->counter++);
     $table_spec = array(
       'fields' => array(
         'serial_column' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
@@ -322,7 +322,7 @@ class SchemaTestCase extends DrupalWebTestCase {
     db_drop_table($table_name);
 
     // Try adding a field to an existing table.
-    $table_name = 'tt_' . ($this->counter++);
+    $table_name = 'test_table_' . ($this->counter++);
     $table_spec = array(
       'fields' => array(
         'serial_column' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
