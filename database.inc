@@ -58,19 +58,11 @@ class DatabaseConnection_oci extends DatabaseConnection {
     try {
       if ($query instanceof DatabaseStatementInterface) {
         $stmt = $query;
-
-        // TODO
-        dpr(array_filter(array($stmt->queryString, $args)));
-
         $stmt->execute(NULL, $options);
       }
       else {
         $this->expandArguments($query, $args);
         $stmt = $this->prepareQuery($query);
-
-        // TODO
-        dpr(array_filter(array($stmt->queryString, $args)));
-
         $stmt->execute($args, $options);
       }
 
@@ -89,6 +81,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
     catch (PDOException $e) {
       if ($options['throw_exception']) {
+        dpr(array_filter(array($stmt->queryString, $args)));
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
           $e->query_string = $stmt->getQueryString();
@@ -377,44 +370,51 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     $long_identifiers = empty($databases['long_identifiers']) ? array() : $databases['long_identifiers'];
     $shorthand = array_flip($long_identifiers);
 
-    // Standardize as array handling.
-    if ($is_object = is_object($data)) {
-      $data = (array) $data;
-    }
-    elseif ($is_string = is_string($data)) {
-      $data = array($data);
+    // If it is string just simplify the handling.
+    if (!is_array($data) && !is_object($data)) {
+      // Value stored as empty string placeholder.
+      if (is_string($data) && $data === 'E#') {
+        return '';
+      }
+      // Rare condition: why store a constraint name as value into column?
+      elseif (is_string($data) && strpos($data, 'L#') === 0 && isset($shorthand[$data])) {
+        return $shorthand[$data];
+      }
+
+      return $data;
     }
 
-    foreach ($data as $key => $value) {
+    // Standardize as object handling.
+    if ($is_array = is_array($data)) {
+      $data = (object) $data;
+    }
+
+    foreach ((array) $data as $key => $value) {
       $curr_key = $key;
-
       // Column name is present as shorthand.
       if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
         $curr_key = $shorthand[$key];
-        $data[$curr_key] = $value;
-        unset($data[$key]);
+        unset($data->$key);
       }
 
+      $data->$curr_key = $value;
       // Value stored as empty string placeholder.
       if (is_string($value) && $value === 'E#') {
-        $data[$curr_key] = '';
+        $data->$curr_key = '';
       }
       // Rare condition: why store a constraint name as value into column?
       elseif (is_string($value) && strpos($value, 'L#') === 0 && isset($shorthand[$value])) {
-        $data[$curr_key] = $shorthand[$key];
+        $data->$curr_key = $shorthand[$key];
       }
       // Recursive restore escaped ONLY IF original value is not string.
-      elseif (!is_string($data[$curr_key])) {
-        $data[$curr_key] = $this->restoreEscaped($value);
+      elseif (is_array($data->$curr_key) || is_object($data->$curr_key)) {
+        $data->$curr_key = $this->restoreEscaped($value);
       }
     }
 
     // Restore original data type.
-    if ($is_object) {
-      return (object) $data;
-    }
-    elseif ($is_string) {
-      return array_shift($data);
+    if ($is_array) {
+      return (array) $data;
     }
 
     return $data;

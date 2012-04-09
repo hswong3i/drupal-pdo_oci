@@ -295,6 +295,16 @@ class UpdateQuery_oci extends UpdateQuery {
   }
 }
 
+class TruncateQuery_oci extends TruncateQuery {
+
+  public function __toString() {
+    // Create a sanitized comment string to prepend to the query.
+    $comments = $this->connection->makeComment($this->comments);
+
+    return $comments . 'TRUNCATE TABLE {' . $this->connection->escapeTable($this->table) . '} ';
+  }
+}
+
 class DatabaseCondition_oci extends DatabaseCondition {
 
   public function compile(DatabaseConnection $connection, QueryPlaceholderInterface $queryPlaceholder) {
