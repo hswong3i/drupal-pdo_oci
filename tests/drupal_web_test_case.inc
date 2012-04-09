@@ -32,6 +32,7 @@ class DrupalWebTestCase extends UnitTestCase {
     return $str;
   }
 }
+SimpleTest::prefer(new DrupalWebTestCase());
 
 class DrupalHtmlReporter extends HtmlReporter {
 
@@ -44,6 +45,7 @@ class DrupalHtmlReporter extends HtmlReporter {
     print " -&gt; " . $this->htmlEntities($message) . "<br />\n";
   }
 }
+SimpleTest::prefer(new DrupalHtmlReporter());
 
 function dpr($input, $return = FALSE, $name = NULL) {
   return dprint_r($input, $return, $name);
@@ -67,9 +69,6 @@ function dprint_r($input, $return = FALSE, $name = NULL, $function = 'print_r', 
     print $printed_value;
   }
 }
-
-SimpleTest::prefer(new DrupalWebTestCase());
-SimpleTest::prefer(new DrupalHtmlReporter());
 
 function database_test_schema() {
   $schema['test'] = array(

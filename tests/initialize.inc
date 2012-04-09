@@ -7,7 +7,6 @@ define('DRUPAL_ROOT', getcwd() . '/../../../..');
 // Add simpletest-like assert support for debug.
 require_once dirname(__FILE__) . '/drupal_web_test_case.inc';
 require_once dirname(__FILE__) . '/bootstrap.inc';
-require_once dirname(__FILE__) . '/database_test.install';
 
 // Include some common *.inc.
 require_once DRUPAL_ROOT . '/includes/unicode.inc';
