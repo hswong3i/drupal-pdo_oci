@@ -436,7 +436,7 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     return $this->restoreEscaped(parent::fetchField($index));
   }
 
-  public function fetchObject($class_name = stdClass, $ctor_args = array()) {
+  public function fetchObject($class_name = NULL, $ctor_args = array()) {
     return $this->restoreEscaped(parent::fetchObject($class_name, $ctor_args));
   }
 

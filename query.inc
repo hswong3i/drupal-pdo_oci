@@ -10,7 +10,6 @@
  * Query code for Oracle embedded database engine.
  */
 
-
 class InsertQuery_oci extends InsertQuery {
 
   public function execute() {
@@ -18,15 +17,34 @@ class InsertQuery_oci extends InsertQuery {
       return NULL;
     }
 
-    $stmt = $this->connection->prepareQuery((string) $this)->getStatement(NULL);
-
     // Fetch the list of blobs and sequences used on that table.
     $table_information = $this->connection->schema()->queryTableInformation($this->table);
 
-    $max_placeholder = 0;
+    // Oracle requires the table name to be specified explicitly
+    // when requesting the last insert ID, so we pass that in via
+    // the options array.
+    $options = $this->queryOptions;
+
+    if (!empty($table_information->sequences)) {
+      $options['sequence_name'] = $table_information->sequences[0];
+    }
+    // If there are no sequences then we can't get a last insert id.
+    elseif ($options['return'] == Database::RETURN_INSERT_ID) {
+      $options['return'] = Database::RETURN_NULL;
+    }
+
+    // Each insert happens in its own query in the degenerate case. However,
+    // we wrap it in a transaction so that it is atomic where possible. On many
+    // databases, such as SQLite, this is also a notable performance boost.
+    $transaction = $this->connection->startTransaction();
+
+    $stmt = $this->connection->prepareQuery((string) $this)->getStatement(NULL);
+
     $blobs = array();
     $blob_count = 0;
     foreach ($this->insertValues as $insert_values) {
+
+      $max_placeholder = 0;
       foreach ($this->insertFields as $idx => $field) {
         if (isset($table_information->blob_fields[$field])) {
           if (!is_null($insert_values[$idx])) {
@@ -53,6 +71,7 @@ class InsertQuery_oci extends InsertQuery {
           $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx]);
         }
       }
+
       // Check if values for a serial field has been passed.
       if (!empty($table_information->serial_fields)) {
         foreach ($table_information->serial_fields as $index => $serial_field) {
@@ -77,6 +96,9 @@ class InsertQuery_oci extends InsertQuery {
           }
         }
       }
+
+      // Only use the returned last_insert_id if it is not already set.
+      $last_insert_id = $this->connection->query($stmt, array(), $options);
     }
 
     if (!empty($this->fromQuery)) {
@@ -90,33 +112,10 @@ class InsertQuery_oci extends InsertQuery {
       }
     }
 
-    // Oracle requires the table name to be specified explicitly
-    // when requesting the last insert ID, so we pass that in via
-    // the options array.
-    $options = $this->queryOptions;
-
-    if (!empty($table_information->sequences)) {
-      $options['sequence_name'] = $table_information->sequences[0];
-    }
-    // If there are no sequences then we can't get a last insert id.
-    elseif ($options['return'] == Database::RETURN_INSERT_ID) {
-      $options['return'] = Database::RETURN_NULL;
-    }
-
-    // Each insert happens in its own query in the degenerate case. However,
-    // we wrap it in a transaction so that it is atomic where possible. On many
-    // databases, such as SQLite, this is also a notable performance boost.
-    $transaction = $this->connection->startTransaction();
-
-    try {
+    // All default query.
+    if (count($this->insertValues) == 0) {
       // Only use the returned last_insert_id if it is not already set.
       $last_insert_id = $this->connection->query($stmt, array(), $options);
-    }
-    catch (Exception $e) {
-      // One of the INSERTs failed, rollback the whole batch.
-      $transaction->rollback();
-      // Rethrow the exception for the calling code.
-      throw $e;
     }
 
     // Re-initialize the values array so that we can re-use this query.
@@ -146,44 +145,36 @@ class InsertQuery_oci extends InsertQuery {
 
     $query = $comments . 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') VALUES ';
 
-    $max_placeholder = 0;
-    $values = array();
     $blob_fields = array();
     $blob_placeholders = array();
     if (count($this->insertValues)) {
-      foreach ($this->insertValues as $insert_values) {
-        $placeholders = array();
+      $placeholders = array();
 
-        // Default fields aren't really placeholders, but this is the most convenient
-        // way to handle them.
-        $placeholders = array_pad($placeholders, count($this->defaultFields), 'DEFAULT');
+      // Default fields aren't really placeholders, but this is the most convenient
+      // way to handle them.
+      $placeholders = array_pad($placeholders, count($this->defaultFields), 'DEFAULT');
 
-        $new_placeholder = $max_placeholder + count($insert_values);
-        $i = $max_placeholder;
-        foreach ($this->insertFields as $field) {
-          if (isset($table_information->blob_fields[$field])) {
-            // BLOB field insert in Oracle required additional handling with
-            // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
-            $placeholders[] = 'EMPTY_BLOB()';
-            $blob_fields[] = $field;
-            $blob_placeholders[] = ':db_insert_placeholder_' . $i;
-          }
-          else {
-            $placeholders[] = ':db_insert_placeholder_' . $i;
-          }
-          ++$i;
+      $i = 0;
+      foreach ($this->insertFields as $field) {
+        if (isset($table_information->blob_fields[$field])) {
+          // BLOB field insert in Oracle required additional handling with
+          // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
+          $placeholders[] = 'EMPTY_BLOB()';
+          $blob_fields[] = $field;
+          $blob_placeholders[] = ':db_insert_placeholder_' . $i;
         }
-        $max_placeholder = $new_placeholder;
-        $values[] = '(' . implode(', ', $placeholders) . ')';
+        else {
+          $placeholders[] = ':db_insert_placeholder_' . $i;
+        }
+        ++$i;
       }
+      $query .= '(' . implode(', ', $placeholders) . ')';
     }
     else {
       // If there are no values, then this is a default-only query. We still need to handle that.
       $placeholders = array_fill(0, count($this->defaultFields), 'DEFAULT');
-      $values[] = '(' . implode(', ', $placeholders) . ')';
+      $query .= '(' . implode(', ', $placeholders) . ')';
     }
-
-    $query .= implode(', ', $values);
 
     // Oracle BLOB additional handling with RETURNING INTO.
     if (count($blob_fields)) {
