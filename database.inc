@@ -58,11 +58,13 @@ class DatabaseConnection_oci extends DatabaseConnection {
     try {
       if ($query instanceof DatabaseStatementInterface) {
         $stmt = $query;
+        //dpr(array_filter(array($stmt->queryString, $args)));
         $stmt->execute(NULL, $options);
       }
       else {
         $this->expandArguments($query, $args);
         $stmt = $this->prepareQuery($query);
+        //dpr(array_filter(array($stmt->queryString, $args)));
         $stmt->execute($args, $options);
       }
 
@@ -81,7 +83,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
     catch (PDOException $e) {
       if ($options['throw_exception']) {
-        dpr(array_filter(array($stmt->queryString, $args)));
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
           $e->query_string = $stmt->getQueryString();
@@ -391,13 +392,14 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
 
     foreach ((array) $data as $key => $value) {
       $curr_key = $key;
+
       // Column name is present as shorthand.
       if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
         $curr_key = $shorthand[$key];
+        $data->$curr_key = $value;
         unset($data->$key);
       }
 
-      $data->$curr_key = $value;
       // Value stored as empty string placeholder.
       if (is_string($value) && $value === 'E#') {
         $data->$curr_key = '';
@@ -407,7 +409,7 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
         $data->$curr_key = $shorthand[$key];
       }
       // Recursive restore escaped ONLY IF original value is not string.
-      elseif (is_array($data->$curr_key) || is_object($data->$curr_key)) {
+      elseif (is_array($value) || is_object($value)) {
         $data->$curr_key = $this->restoreEscaped($value);
       }
     }

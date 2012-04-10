@@ -140,10 +140,10 @@ class InsertQuery_oci extends InsertQuery {
     // If we're selecting from a SelectQuery, finish building the query and
     // pass it back, as any remaining options are irrelevant.
     if (!empty($this->fromQuery)) {
-      return $comments . 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') ' . $this->fromQuery;
+      return $comments . 'INSERT INTO {' . $this->connection->escapeTable($this->table) . '} (' . implode(', ', $this->connection->escapeField($insert_fields)) . ') ' . $this->fromQuery;
     }
 
-    $query = $comments . 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') VALUES ';
+    $query = $comments . 'INSERT INTO {' . $this->connection->escapeTable($this->table) . '} (' . implode(', ', $this->connection->escapeField($insert_fields)) . ') VALUES ';
 
     $blob_fields = array();
     $blob_placeholders = array();
@@ -160,7 +160,7 @@ class InsertQuery_oci extends InsertQuery {
           // BLOB field insert in Oracle required additional handling with
           // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
           $placeholders[] = 'EMPTY_BLOB()';
-          $blob_fields[] = $field;
+          $blob_fields[] = $this->connection->escapeField($field);
           $blob_placeholders[] = ':db_insert_placeholder_' . $i;
         }
         else {
@@ -185,6 +185,16 @@ class InsertQuery_oci extends InsertQuery {
   }
 }
 
+class TruncateQuery_oci extends TruncateQuery {
+
+  public function __toString() {
+    // Create a sanitized comment string to prepend to the query.
+    $comments = $this->connection->makeComment($this->comments);
+
+    return $comments . 'TRUNCATE TABLE {' . $this->connection->escapeTable($this->table) . '} ';
+  }
+}
+
 class UpdateQuery_oci extends UpdateQuery {
 
   public function execute() {
@@ -192,12 +202,23 @@ class UpdateQuery_oci extends UpdateQuery {
     $blobs = array();
     $blob_count = 0;
 
+    // Fetch the list of blobs and sequences used on that table.
+    $table_information = $this->connection->schema()->queryTableInformation($this->table);
+
+    // Oracle requires the table name to be specified explicitly
+    // when requesting the last insert ID, so we pass that in via
+    // the options array.
+    $options = $this->queryOptions;
+    $options['already_prepared'] = TRUE;
+
+    // Each insert happens in its own query in the degenerate case. However,
+    // we wrap it in a transaction so that it is atomic where possible. On many
+    // databases, such as SQLite, this is also a notable performance boost.
+    $transaction = $this->connection->startTransaction();
+
     // Because we filter $fields the same way here and in __toString(), the
     // placeholders will all match up properly.
     $stmt = $this->connection->prepareQuery((string) $this)->getStatement(NULL);
-
-    // Fetch the list of blobs and sequences used on that table.
-    $table_information = $this->connection->schema()->queryTableInformation($this->table);
 
     // Expressions take priority over literal fields, so we process those first
     // and remove any literal fields that conflict.
@@ -216,17 +237,18 @@ class UpdateQuery_oci extends UpdateQuery {
     }
 
     foreach ($fields as $field => $value) {
-      $placeholder = ':db_update_placeholder_' . ($max_placeholder++);
-
       if (isset($table_information->blob_fields[$field])) {
         $blobs[$blob_count] = fopen('php://memory', 'a');
         fwrite($blobs[$blob_count], $value);
         rewind($blobs[$blob_count]);
-        $stmt->bindParam($placeholder, $blobs[$blob_count], PDO::PARAM_LOB);
+
+        $stmt->bindParam(':db_update_placeholder_' . $max_placeholder++, $blobs[$blob_count], PDO::PARAM_LOB);
+
+        // Pre-increment is faster in PHP than increment.
         ++$blob_count;
       }
       else {
-        $stmt->bindParam($placeholder, $fields[$field]);
+        $stmt->bindParam(':db_update_placeholder_' . $max_placeholder++, $fields[$field]);
       }
     }
 
@@ -239,9 +261,9 @@ class UpdateQuery_oci extends UpdateQuery {
       }
     }
 
-    $options = $this->queryOptions;
-    $options['already_prepared'] = TRUE;
     $this->connection->query($stmt, $options);
+
+    // Transaction commits here where $transaction looses scope.
 
     return $stmt->rowCount();
   }
@@ -258,7 +280,7 @@ class UpdateQuery_oci extends UpdateQuery {
     $fields = $this->fields;
     $update_fields = array();
     foreach ($this->expressionFields as $field => $data) {
-      $update_fields[] = $field . '=' . $data['expression'];
+      $update_fields[] = $this->connection->escapeField($field) . ' = ' . $data['expression'];
       unset($fields[$field]);
     }
 
@@ -269,12 +291,12 @@ class UpdateQuery_oci extends UpdateQuery {
       if (isset($table_information->blob_fields[$field])) {
         // BLOB field update in Oracle required additional handling with
         // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
-        $update_fields[] = $field . '=EMPTY_BLOB()';
-        $blob_fields[] = $field;
-        $blob_placeholders[] = ':db_insert_placeholder_' . $i;
+        $update_fields[] = $this->connection->escapeField($field) . ' = EMPTY_BLOB()';
+        $blob_fields[] = $this->connection->escapeField($field);
+        $blob_placeholders[] = ':db_insert_placeholder_' . $max_placeholder++;
       }
       else {
-        $update_fields[] = $field . '=:db_update_placeholder_' . ($max_placeholder++);
+        $update_fields[] = $this->connection->escapeField($field) . ' = :db_update_placeholder_' . $max_placeholder++;
       }
     }
 
@@ -283,7 +305,7 @@ class UpdateQuery_oci extends UpdateQuery {
     if (count($this->condition)) {
       $this->condition->compile($this->connection, $this);
       // There is an implicit string cast on $this->condition.
-      $query .= "\nWHERE " . $this->condition;
+      $query .= " WHERE " . $this->condition;
     }
 
     // Oracle BLOB additional handling with RETURNING INTO.
@@ -292,95 +314,5 @@ class UpdateQuery_oci extends UpdateQuery {
     }
 
     return $query;
-  }
-}
-
-class TruncateQuery_oci extends TruncateQuery {
-
-  public function __toString() {
-    // Create a sanitized comment string to prepend to the query.
-    $comments = $this->connection->makeComment($this->comments);
-
-    return $comments . 'TRUNCATE TABLE {' . $this->connection->escapeTable($this->table) . '} ';
-  }
-}
-
-class DatabaseCondition_oci extends DatabaseCondition {
-
-  public function compile(DatabaseConnection $connection, QueryPlaceholderInterface $queryPlaceholder) {
-    // Re-compile if this condition changed or if we are compiled against a
-    // different query placeholder object.
-    if ($this->changed || isset($this->queryPlaceholderIdentifier) && ($this->queryPlaceholderIdentifier != $queryPlaceholder->uniqueIdentifier())) {
-      $this->queryPlaceholderIdentifier = $queryPlaceholder->uniqueIdentifier();
-
-      $condition_fragments = array();
-      $arguments = array();
-
-      $conditions = $this->conditions;
-      $conjunction = $conditions['#conjunction'];
-      unset($conditions['#conjunction']);
-      foreach ($conditions as $condition) {
-        if (empty($condition['operator'])) {
-          // This condition is a literal string, so let it through as is.
-          $condition_fragments[] = ' (' . $condition['field'] . ') ';
-          $arguments += $condition['value'];
-        }
-        else {
-          // It's a structured condition, so parse it out accordingly.
-          // Note that $condition['field'] will only be an object for a dependent
-          // DatabaseCondition object, not for a dependent subquery.
-          if ($condition['field'] instanceof QueryConditionInterface) {
-            // Compile the sub-condition recursively and add it to the list.
-            $condition['field']->compile($connection, $queryPlaceholder);
-            $condition_fragments[] = '(' . (string) $condition['field'] . ')';
-            $arguments += $condition['field']->arguments();
-          }
-          else {
-            // For simplicity, we treat all operators as the same data structure.
-            // In the typical degenerate case, this won't get changed.
-            $operator_defaults = array(
-              'prefix' => '',
-              'postfix' => '',
-              'delimiter' => '',
-              'operator' => $condition['operator'],
-              'use_value' => TRUE,
-            );
-            $operator = $connection->mapConditionOperator($condition['operator']);
-            if (!isset($operator)) {
-              $operator = $this->mapConditionOperator($condition['operator']);
-            }
-            $operator += $operator_defaults;
-
-            $placeholders = array();
-            if ($condition['value'] instanceof SelectQueryInterface) {
-              $condition['value']->compile($connection, $queryPlaceholder);
-              $placeholders[] = (string) $condition['value'];
-              $arguments += $condition['value']->arguments();
-              // Subqueries are the actual value of the operator, we don't
-              // need to add another below.
-              $operator['use_value'] = FALSE;
-            }
-            // We assume that if there is a delimiter, then the value is an
-            // array. If not, it is a scalar. For simplicity, we first convert
-            // up to an array so that we can build the placeholders in the same way.
-            elseif (!$operator['delimiter']) {
-              $condition['value'] = array($condition['value']);
-            }
-            if ($operator['use_value']) {
-              foreach ($condition['value'] as $value) {
-                $placeholder = ':db_condition_placeholder_' . $queryPlaceholder->nextPlaceholder();
-                $arguments[$placeholder] = $value;
-                $placeholders[] = $placeholder;
-              }
-            }
-            $condition_fragments[] = ' (' . $connection->escapeField($condition['field']) . ' ' . $operator['operator'] . ' ' . $operator['prefix'] . implode($operator['delimiter'], $placeholders) . $operator['postfix'] . ') ';
-          }
-        }
-      }
-
-      $this->changed = FALSE;
-      $this->stringVersion = implode($conjunction, $condition_fragments);
-      $this->arguments = $arguments;
-    }
   }
 }

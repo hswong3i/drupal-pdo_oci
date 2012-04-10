@@ -12,12 +12,6 @@
 
 class SelectQuery_oci extends SelectQuery {
 
-  public function __construct($table, $alias = NULL, DatabaseConnection $connection, $options = array()) {
-    parent::__construct($table, $alias, $connection, $options);
-    $this->where = new DatabaseCondition_oci('AND');
-    $this->having = new DatabaseCondition_oci('AND');
-  }
-
   public function __toString() {
     // For convenience, we compile the query ourselves if the caller forgot
     // to do it. This allows constructs like "(string) $query" to work. When
