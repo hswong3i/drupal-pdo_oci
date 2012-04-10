@@ -4,4 +4,4 @@
 require_once dirname(__FILE__) . '/initialize.inc';
 
 // Include trimmed version of schema.test.
-require_once dirname(__FILE__) . '/schema.simpletest';
+require_once DRUPAL_ROOT . '/modules/simpletest/tests/schema.test';
