@@ -35,7 +35,7 @@ class InsertQuery_oci extends InsertQuery {
 
     // Each insert happens in its own query in the degenerate case. However,
     // we wrap it in a transaction so that it is atomic where possible. On many
-    // databases, such as SQLite, this is also a notable performance boost.
+    // databases, such as Oracle, this is also a notable performance boost.
     $transaction = $this->connection->startTransaction();
 
     $stmt = $this->connection->prepareQuery((string) $this)->getStatement(NULL);
@@ -266,7 +266,7 @@ class UpdateQuery_oci extends UpdateQuery {
 
     // Each insert happens in its own query in the degenerate case. However,
     // we wrap it in a transaction so that it is atomic where possible. On many
-    // databases, such as SQLite, this is also a notable performance boost.
+    // databases, such as Oracle, this is also a notable performance boost.
     $transaction = $this->connection->startTransaction();
 
     // Because we filter $fields the same way here and in __toString(), the

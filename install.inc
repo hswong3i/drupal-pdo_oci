@@ -38,7 +38,7 @@ class DatabaseTasks_oci extends DatabaseTasks {
   }
 
   /**
-   * Make PostgreSQL Drupal friendly.
+   * Make Oracle Drupal friendly.
    */
   public function initializeDatabase() {
     try {

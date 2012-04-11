@@ -24,20 +24,22 @@ class DatabaseConnection_oci extends DatabaseConnection {
     // Transactional DDL is not available in Oracle.
     $this->transactionalDDLSupport = FALSE;
 
-    // Default to TCP connection on port 1521.
-    if (empty($connection_options['port'])) {
-      $connection_options['port'] = 1521;
-    }
-
     $this->connectionOptions = $connection_options;
 
-    $dsn = 'oci:dbname=//' . $connection_options['host'] . ':' . $connection_options['port'] . '/' . $connection_options['database'] . ';charset=AL32UTF8';
+    $dsn = 'oci:dbname=//' . $connection_options['host'] . ':' . (empty($connection_options['port']) ? '1521' : $connection_options['port']) . '/' . $connection_options['database'] . ';charset=AL32UTF8';
 
     // Allow PDO options to be overridden.
     $connection_options += array(
       'pdo' => array(),
     );
     $connection_options['pdo'] += array(
+      // Prepared statements are most effective for performance when queries
+      // are recycled (used several times). However, if they are not re-used,
+      // prepared statements become ineffecient. Since most of Drupal's
+      // prepared queries are not re-used, it should be faster to emulate
+      // the preparation than to actually ready statements for re-use. If in
+      // doubt, reset to FALSE and measure performance.
+      PDO::ATTR_EMULATE_PREPARES => TRUE,
       // Convert numeric values to strings when fetching.
       PDO::ATTR_STRINGIFY_FETCHES => TRUE,
       // Force column names to lower case.
@@ -82,6 +84,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
+      //dpr(array_filter(array($stmt->queryString, $args)));
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -210,6 +213,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
    * and updating a sequences table.
    */
   public function nextId($existing_id = 0) {
+    $transaction = $this->startTransaction();
 
     // Retrive the name of the sequence. This information cannot be cached
     // because the prefix may change, for example, like it does in simpletests.
@@ -238,6 +242,45 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
 
     return $this->query('SELECT ' . $name . '.CURRVAL FROM DUAL')->fetchField();
+  }
+
+  protected function popCommittableTransactions() {
+    // Commit all the committable layers.
+    foreach (array_reverse($this->transactionLayers) as $name => $active) {
+      // Stop once we found an active transaction.
+      if ($active) {
+        break;
+      }
+
+      // If there are no more layers left then we should commit.
+      unset($this->transactionLayers[$name]);
+      if (empty($this->transactionLayers)) {
+        if (!PDO::commit()) {
+          throw new DatabaseTransactionCommitFailedException();
+        }
+      }
+      else {
+        // Attempt to release this savepoint in the standard way.
+        try {
+          $this->query('RELEASE SAVEPOINT ' . $name);
+        }
+        catch (PDOException $e) {
+          // To avoid exceptions when no actual error has occurred, we silently
+          // succeed for Oracle error code 900 ("invalid SQL statement").
+          if ($e->errorInfo[1] == '900') {
+            // If one SAVEPOINT was released automatically, then all were.
+            // Therefore, clean the transaction stack.
+            $this->transactionLayers = array();
+            // We also have to explain to PDO that the transaction stack has
+            // been cleaned-up.
+            PDO::commit();
+          }
+          else {
+            throw $e;
+          }
+        }
+      }
+    }
   }
 
   /**

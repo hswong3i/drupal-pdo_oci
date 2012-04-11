@@ -1078,7 +1078,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can merge-insert a record successfully.
    */
-  function TODO_testMergeInsert() {
+  function testMergeInsert() {
     $num_records_before = db_query('SELECT COUNT(*) FROM {test_people}')->fetchField();
 
     $result = db_merge('test_people')
@@ -1103,7 +1103,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can merge-update a record successfully.
    */
-  function TODO_testMergeUpdate() {
+  function testMergeUpdate() {
     $num_records_before = db_query('SELECT COUNT(*) FROM {test_people}')->fetchField();
 
     $result = db_merge('test_people')
@@ -1128,7 +1128,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can merge-update a record successfully, with different insert and update.
    */
-  function TODO_testMergeUpdateExcept() {
+  function testMergeUpdateExcept() {
     $num_records_before = db_query('SELECT COUNT(*) FROM {test_people}')->fetchField();
 
     db_merge('test_people')
@@ -1149,7 +1149,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can merge-update a record successfully, with alternate replacement.
    */
-  function TODO_testMergeUpdateExplicit() {
+  function testMergeUpdateExplicit() {
     $num_records_before = db_query('SELECT COUNT(*) FROM {test_people}')->fetchField();
 
     db_merge('test_people')
@@ -1175,7 +1175,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can merge-update a record successfully, with expressions.
    */
-  function TODO_testMergeUpdateExpression() {
+  function testMergeUpdateExpression() {
     $num_records_before = db_query('SELECT COUNT(*) FROM {test_people}')->fetchField();
 
     $age_before = db_query('SELECT age FROM {test_people} WHERE job = :job', array(':job' => 'Speaker'))->fetchField();
@@ -1204,7 +1204,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Test that we can merge-insert without any update fields.
    */
-  function TODO_testMergeInsertWithoutUpdate() {
+  function testMergeInsertWithoutUpdate() {
     $num_records_before = db_query('SELECT COUNT(*) FROM {test_people}')->fetchField();
 
     db_merge('test_people')
@@ -1223,7 +1223,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can merge-update without any update fields.
    */
-  function TODO_testMergeUpdateWithoutUpdate() {
+  function testMergeUpdateWithoutUpdate() {
     $num_records_before = db_query('SELECT COUNT(*) FROM {test_people}')->fetchField();
 
     db_merge('test_people')
@@ -1255,7 +1255,7 @@ class DatabaseMergeTestCase extends DatabaseTestCase {
   /**
    * Test that an invalid merge query throws an exception like it is supposed to.
    */
-  function TODO_testInvalidMerge() {
+  function testInvalidMerge() {
     try {
       // This query should die because there is no key field specified.
       db_merge('test_people')
@@ -3362,7 +3362,7 @@ class DatabaseTransactionTestCase extends DatabaseTestCase {
    *
    * If the active connection does not support transactions, this test does nothing.
    */
-  function TODO_testTransactionRollBackSupported() {
+  function testTransactionRollBackSupported() {
     // This test won't work right if transactions are not supported.
     if (!Database::getConnection()->supportsTransactions()) {
       return;
@@ -3415,7 +3415,7 @@ class DatabaseTransactionTestCase extends DatabaseTestCase {
    * The behavior of this test should be identical for connections that support
    * transactions and those that do not.
    */
-  function TODO_testCommittedTransaction() {
+  function testCommittedTransaction() {
     try {
       // Create two nested transactions. The changes should be committed.
       $this->transactionOuterLayer('A');
@@ -3434,7 +3434,7 @@ class DatabaseTransactionTestCase extends DatabaseTestCase {
   /**
    * Test the compatibility of transactions with DDL statements.
    */
-  function TODO_testTransactionWithDdlStatement() {
+  function testTransactionWithDdlStatement() {
     // First, test that a commit works normally, even with DDL statements.
     $transaction = db_transaction();
     $this->insertRow('row');
@@ -3594,7 +3594,7 @@ class DatabaseTransactionTestCase extends DatabaseTestCase {
   /**
    * Test transaction stacking and commit / rollback.
    */
-  function TODO_testTransactionStacking() {
+  function testTransactionStacking() {
     // This test won't work right if transactions are not supported.
     if (!Database::getConnection()->supportsTransactions()) {
       return;
