@@ -793,7 +793,7 @@ class DatabaseUpdateTestCase extends DatabaseTestCase {
   /**
    * Test updating with expressions.
    */
-  function TODO_testExpressionUpdate() {
+  function testExpressionUpdate() {
     // Set age = 1 for a single row for this test to work.
     db_update('test')
       ->condition('id', 1)
@@ -888,7 +888,7 @@ class DatabaseUpdateComplexTestCase extends DatabaseTestCase {
   /**
    * Test LIKE conditionals.
    */
-  function TODO_testLikeConditionUpdate() {
+  function testLikeConditionUpdate() {
     $num_updated = db_update('test')
       ->fields(array('job' => 'Musician'))
       ->condition('name', '%ge%', 'LIKE')
@@ -954,7 +954,7 @@ class DatabaseUpdateLOBTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can update a blob column.
    */
-  function TODO_testUpdateOneBlob() {
+  function testUpdateOneBlob() {
     $data = "This is\000a test.";
     $this->assertTrue(strlen($data) === 15, t('Test data contains a NULL.'));
     $id = db_insert('test_one_blob')
@@ -974,7 +974,7 @@ class DatabaseUpdateLOBTestCase extends DatabaseTestCase {
   /**
    * Confirm that we can update two blob columns in the same table.
    */
-  function TODO_testUpdateMultipleBlob() {
+  function testUpdateMultipleBlob() {
     $id = db_insert('test_two_blobs')
       ->fields(array(
         'blob1' => 'This is',
@@ -1548,7 +1548,7 @@ class DatabaseSelectTestCase extends DatabaseTestCase {
    * order each time, the only way this could happen is if we have successfully
    * triggered the database's random ordering functionality.
    */
-  function TODO_testRandomOrder() {
+  function testRandomOrder() {
     // Use 52 items, so the chance that this test fails by accident will be the
     // same as the chance that a deck of cards will come out in the same order
     // after shuffling it (in other words, nearly impossible).
@@ -2135,7 +2135,7 @@ class DatabaseSelectComplexTestCase extends DatabaseTestCase {
   /**
    * Test that we can generate a count query from a query with GROUP BY.
    */
-  function TODO_testCountQueryGroupBy() {
+  function testCountQueryGroupBy() {
     $query = db_select('test_task');
     $pid_field = $query->addField('test_task', 'pid');
     $query->groupBy('pid');
@@ -2746,7 +2746,7 @@ class DatabaseRegressionTestCase extends DatabaseTestCase {
    * Tries to insert non-ascii UTF-8 data in a database column and checks
    * if its stored properly.
    */
-  function TODO_testRegression_310447() {
+  function testRegression_310447() {
     // That's a 255 character UTF-8 string.
     $name = str_repeat("é", 255);
     db_insert('test')
@@ -3038,7 +3038,7 @@ class DatabaseBasicSyntaxTestCase extends DatabaseTestCase {
   /**
    * Test for string concatenation.
    */
-  function TODO_testBasicConcat() {
+  function testBasicConcat() {
     $result = db_query('SELECT CONCAT(:a1, CONCAT(:a2, CONCAT(:a3, CONCAT(:a4, :a5))))', array(
       ':a1' => 'This',
       ':a2' => ' ',
@@ -3065,7 +3065,7 @@ class DatabaseBasicSyntaxTestCase extends DatabaseTestCase {
   /**
    * Test escaping of LIKE wildcards.
    */
-  function TODO_testLikeEscape() {
+  function testLikeEscape() {
     db_insert('test')
       ->fields(array(
         'name' => 'Ring_',
@@ -3091,7 +3091,7 @@ class DatabaseBasicSyntaxTestCase extends DatabaseTestCase {
   /**
    * Test LIKE query containing a backslash.
    */
-  function TODO_testLikeBackslash() {
+  function testLikeBackslash() {
     db_insert('test')
       ->fields(array('name'))
       ->values(array(
@@ -3139,7 +3139,7 @@ class DatabaseInvalidDataTestCase extends DatabaseTestCase {
   /**
    * Traditional SQL database systems abort inserts when invalid data is encountered.
    */
-  function TODO_testInsertDuplicateData() {
+  function testInsertDuplicateData() {
     // Try to insert multiple records where at least one has bad data.
     try {
       db_insert('test')
@@ -3212,7 +3212,7 @@ class DatabaseQueryTestCase extends DatabaseTestCase {
   /**
    * Test that we can specify an array of values in the query by simply passing in an array.
    */
-  function TODO_testArraySubstitution() {
+  function testArraySubstitution() {
     $names = db_query('SELECT name FROM {test} WHERE age IN (:ages) ORDER BY age', array(':ages' => array(25, 26, 27)))->fetchAll();
 
     $this->assertEqual(count($names), 3, t('Correct number of names returned'));

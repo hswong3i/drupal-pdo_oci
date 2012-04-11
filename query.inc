@@ -40,82 +40,90 @@ class InsertQuery_oci extends InsertQuery {
 
     $stmt = $this->connection->prepareQuery((string) $this)->getStatement(NULL);
 
-    $blobs = array();
-    $blob_count = 0;
-    foreach ($this->insertValues as $insert_values) {
+    try {
+      $blobs = array();
+      $blob_count = 0;
+      foreach ($this->insertValues as $insert_values) {
 
-      $max_placeholder = 0;
-      foreach ($this->insertFields as $idx => $field) {
-        if (isset($table_information->blob_fields[$field])) {
-          if (!is_null($insert_values[$idx])) {
-            // Writing NULL into file handler means write nothing. The file
-            // handler will contain an empty string but not NULL. Therefore
-            // NULL will be translated as empty string when save into
-            // database, and so buggy.
-            $blobs[$blob_count] = fopen('php://memory', 'a');
-            fwrite($blobs[$blob_count], $insert_values[$idx]);
-            rewind($blobs[$blob_count]);
+        $max_placeholder = 0;
+        foreach ($this->insertFields as $idx => $field) {
+          if (isset($table_information->blob_fields[$field])) {
+            if (!is_null($insert_values[$idx])) {
+              // Writing NULL into file handler means write nothing. The file
+              // handler will contain an empty string but not NULL. Therefore
+              // NULL will be translated as empty string when save into
+              // database, and so buggy.
+              $blobs[$blob_count] = fopen('php://memory', 'a');
+              fwrite($blobs[$blob_count], $insert_values[$idx]);
+              rewind($blobs[$blob_count]);
 
-            $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $blobs[$blob_count], PDO::PARAM_LOB);
+              $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $blobs[$blob_count], PDO::PARAM_LOB);
 
-            // Pre-increment is faster in PHP than increment.
-            ++$blob_count;
+              // Pre-increment is faster in PHP than increment.
+              ++$blob_count;
+            }
+            else {
+              // BLOB NULL is a bit different from normal case: we can't use
+              // StreamAPI, but bind NULL to target field direcly.
+              $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx], PDO::PARAM_LOB);
+            }
           }
           else {
-            // BLOB NULL is a bit different from normal case: we can't use
-            // StreamAPI, but bind NULL to target field direcly.
-            $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx], PDO::PARAM_LOB);
+            $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx]);
           }
         }
-        else {
-          $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx]);
-        }
-      }
 
-      // Check if values for a serial field has been passed.
-      if (!empty($table_information->serial_fields)) {
-        foreach ($table_information->serial_fields as $index => $serial_field) {
-          $serial_key = array_search($serial_field, $this->insertFields);
-          if ($serial_key !== FALSE) {
-            $serial_value = $insert_values[$serial_key];
+        // Check if values for a serial field has been passed.
+        if (!empty($table_information->serial_fields)) {
+          foreach ($table_information->serial_fields as $index => $serial_field) {
+            $serial_key = array_search($serial_field, $this->insertFields);
+            if ($serial_key !== FALSE) {
+              $serial_value = $insert_values[$serial_key];
 
-            // Force $last_insert_id to the specified value. This is only done
-            // if $index is 0.
-            if ($index == 0) {
-              $last_insert_id = $serial_value;
+              // Force $last_insert_id to the specified value. This is only done
+              // if $index is 0.
+              if ($index == 0) {
+                $last_insert_id = $serial_value;
+              }
+              // Set the sequence to the bigger value of either the passed
+              // value or the max value of the column. It can happen that another
+              // thread calls nextval() which could lead to a serial number being
+              // used twice. However, trying to insert a value into a serial
+              // column should only be done in very rare cases and is not thread
+              // safe by definition.
+              $current_value = $this->connection->lastInsertId($table_information->sequences[$index]);
+              $this->connection->query('DROP SEQUENCE ' . $table_information->sequences[$index]);
+              $this->connection->query('CREATE SEQUENCE ' . $table_information->sequences[$index] . ' MINVALUE 1 INCREMENT BY 1 START WITH ' . max($serial_value, $current_value) . ' NOCACHE NOORDER NOCYCLE');
             }
-            // Set the sequence to the bigger value of either the passed
-            // value or the max value of the column. It can happen that another
-            // thread calls nextval() which could lead to a serial number being
-            // used twice. However, trying to insert a value into a serial
-            // column should only be done in very rare cases and is not thread
-            // safe by definition.
-            $current_value = $this->connection->lastInsertId($table_information->sequences[$index]);
-            $this->connection->query('DROP SEQUENCE ' . $table_information->sequences[$index]);
-            $this->connection->query('CREATE SEQUENCE ' . $table_information->sequences[$index] . ' MINVALUE 1 INCREMENT BY 1 START WITH ' . max($serial_value, $current_value) . ' NOCACHE NOORDER NOCYCLE');
           }
+        }
+
+        // Only use the returned last_insert_id if it is not already set.
+        $last_insert_id = $this->connection->query($stmt, array(), $options);
+      }
+
+      if (!empty($this->fromQuery)) {
+        // bindParam stores only a reference to the variable that is followed when
+        // the statement is executed. We pass $arguments[$key] instead of $value
+        // because the second argument to bindParam is passed by reference and
+        // the foreach statement assigns the element to the existing reference.
+        $arguments = $this->fromQuery->getArguments();
+        foreach ($arguments as $key => $value) {
+          $stmt->bindParam($key, $arguments[$key]);
         }
       }
 
-      // Only use the returned last_insert_id if it is not already set.
-      $last_insert_id = $this->connection->query($stmt, array(), $options);
-    }
-
-    if (!empty($this->fromQuery)) {
-      // bindParam stores only a reference to the variable that is followed when
-      // the statement is executed. We pass $arguments[$key] instead of $value
-      // because the second argument to bindParam is passed by reference and
-      // the foreach statement assigns the element to the existing reference.
-      $arguments = $this->fromQuery->getArguments();
-      foreach ($arguments as $key => $value) {
-        $stmt->bindParam($key, $arguments[$key]);
+      // All default query.
+      if (count($this->insertValues) == 0) {
+        // Only use the returned last_insert_id if it is not already set.
+        $last_insert_id = $this->connection->query($stmt, array(), $options);
       }
     }
-
-    // All default query.
-    if (count($this->insertValues) == 0) {
-      // Only use the returned last_insert_id if it is not already set.
-      $last_insert_id = $this->connection->query($stmt, array(), $options);
+    catch (Exception $e) {
+      // One of the INSERTs failed, rollback the whole batch.
+      $transaction->rollback();
+      // Rethrow the exception for the calling code.
+      throw $e;
     }
 
     // Re-initialize the values array so that we can re-use this query.
@@ -197,6 +205,17 @@ class TruncateQuery_oci extends TruncateQuery {
 
 class UpdateQuery_oci extends UpdateQuery {
 
+  protected function removeFieldsInCondition(&$fields, QueryConditionInterface $condition) {
+    foreach ($condition->conditions() as $child_condition) {
+      if (isset($child_condition['field']) && $child_condition['field'] instanceof QueryConditionInterface) {
+        $this->removeFieldsInCondition($fields, $child_condition['field']);
+      }
+      elseif (isset($child_condition['field'])) {
+        unset($fields[$child_condition['field']]);
+      }
+    }
+  }
+
   public function execute() {
     $max_placeholder = 0;
     $blobs = array();
@@ -211,6 +230,40 @@ class UpdateQuery_oci extends UpdateQuery {
     $options = $this->queryOptions;
     $options['already_prepared'] = TRUE;
 
+    // Oracle counts all the rows that match the conditions as modified, even if they
+    // will not be affected by the query. We workaround this by ensuring that
+    // we don't select those rows.
+    if (empty($this->queryOptions['oci_return_matched_rows'])) {
+      // Get the fields used in the update query, and remove those that are already
+      // in the condition.
+      $fields = $this->expressionFields + $this->fields;
+      $this->removeFieldsInCondition($fields, $this->condition);
+
+      // Add the inverse of the fields to the condition.
+      $condition = new DatabaseCondition('OR');
+      foreach ($fields as $field => $data) {
+        if (!isset($table_information->blob_fields[$field])) {
+          if (is_array($data)) {
+            // The field is an expression.
+            $condition->where($field . ' <> ' . $data['expression']);
+            $condition->isNull($field);
+          }
+          elseif (!isset($data)) {
+            // The field will be set to NULL.
+            $condition->isNotNull($field);
+          }
+          else {
+            $condition->condition($field, $data, '<>');
+            $condition->isNull($field);
+          }
+        }
+      }
+      if (count($condition)) {
+        $condition->compile($this->connection, $this);
+        $this->condition->where((string) $condition, $condition->arguments());
+      }
+    }
+
     // Each insert happens in its own query in the degenerate case. However,
     // we wrap it in a transaction so that it is atomic where possible. On many
     // databases, such as SQLite, this is also a notable performance boost.
@@ -223,7 +276,6 @@ class UpdateQuery_oci extends UpdateQuery {
     // Expressions take priority over literal fields, so we process those first
     // and remove any literal fields that conflict.
     $fields = $this->fields;
-    $expression_fields = array();
     foreach ($this->expressionFields as $field => $data) {
       if (!empty($data['arguments'])) {
         foreach ($data['arguments'] as $placeholder => $argument) {
@@ -293,7 +345,7 @@ class UpdateQuery_oci extends UpdateQuery {
         // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
         $update_fields[] = $this->connection->escapeField($field) . ' = EMPTY_BLOB()';
         $blob_fields[] = $this->connection->escapeField($field);
-        $blob_placeholders[] = ':db_insert_placeholder_' . $max_placeholder++;
+        $blob_placeholders[] = ':db_update_placeholder_' . $max_placeholder++;
       }
       else {
         $update_fields[] = $this->connection->escapeField($field) . ' = :db_update_placeholder_' . $max_placeholder++;

@@ -107,10 +107,16 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
   public function prepareQuery($query) {
     $query = $this->prefixTables($query);
+    $query = $this->escapeANSI($query);
     $query = $this->escapeReserved($query);
     $query = $this->escapeEmptyString($query);
     $query = $this->escapeLongIdentifiers($query);
     return $this->prepare($query);
+  }
+
+  public function escapeANSI($query) {
+    $query = (preg_match("/^\s*SELECT\s*/", $query) && !preg_match("/^\s*SELECT\s*(.*)\s*FROM\s*/", $query)) ? $query . ' FROM DUAL' : $query;
+    return $query;
   }
 
   public function escapeReserved($query) {
@@ -189,6 +195,8 @@ class DatabaseConnection_oci extends DatabaseConnection {
     if (!isset($specials)) {
       $specials = array(
         'IFNULL' => array('operator' => 'NVL'),
+        'LIKE' => array('postfix' => " ESCAPE '\\'"),
+        'NOT LIKE' => array('postfix' => " ESCAPE '\\'"),
       );
     }
 
@@ -360,63 +368,54 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     return $this->dbh->PDOPrepare($this->queryString);
   }
 
+  private function restoreValue($data) {
+    $long_identifiers = empty($databases['long_identifiers']) ? array() : $databases['long_identifiers'];
+    $shorthand = array_flip($long_identifiers);
+
+    // Value stored as empty string placeholder.
+    if (is_string($data) && $data === 'E#') {
+      return '';
+    }
+    // Rare condition: why store a constraint name as value into column?
+    elseif (is_string($data) && strpos($data, 'L#') === 0 && isset($shorthand[$data])) {
+      return $shorthand[$data];
+    }
+
+    return $data;
+  }
+
   private function restoreEscaped($data) {
     global $databases;
-
-    // Non-SELECT query therefore no return value?
-    if (empty($data)) {
-      return;
-    }
 
     $long_identifiers = empty($databases['long_identifiers']) ? array() : $databases['long_identifiers'];
     $shorthand = array_flip($long_identifiers);
 
-    // If it is string just simplify the handling.
-    if (!is_array($data) && !is_object($data)) {
-      // Value stored as empty string placeholder.
-      if (is_string($data) && $data === 'E#') {
-        return '';
-      }
-      // Rare condition: why store a constraint name as value into column?
-      elseif (is_string($data) && strpos($data, 'L#') === 0 && isset($shorthand[$data])) {
-        return $shorthand[$data];
-      }
-
-      return $data;
-    }
-
-    // Standardize as object handling.
-    if ($is_array = is_array($data)) {
-      $data = (object) $data;
-    }
-
-    foreach ((array) $data as $key => $value) {
-      $curr_key = $key;
-
-      // Column name is present as shorthand.
-      if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
-        $curr_key = $shorthand[$key];
-        $data->$curr_key = $value;
-        unset($data->$key);
-      }
-
-      // Value stored as empty string placeholder.
-      if (is_string($value) && $value === 'E#') {
-        $data->$curr_key = '';
-      }
-      // Rare condition: why store a constraint name as value into column?
-      elseif (is_string($value) && strpos($value, 'L#') === 0 && isset($shorthand[$value])) {
-        $data->$curr_key = $shorthand[$key];
-      }
-      // Recursive restore escaped ONLY IF original value is not string.
-      elseif (is_array($value) || is_object($value)) {
-        $data->$curr_key = $this->restoreEscaped($value);
+    if (is_array($data)) {
+      foreach ($data as $key => $value) {
+        // Column name is present as shorthand.
+        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
+          $data[$shorthand[$key]] = $this->restoreEscaped($value);
+          unset($data[$key]);
+        }
+        else {
+          $data[$key] = $this->restoreEscaped($value);
+        }
       }
     }
-
-    // Restore original data type.
-    if ($is_array) {
-      return (array) $data;
+    elseif (is_object($data)) {
+      foreach ($data as $key => $value) {
+        // Column name is present as shorthand.
+        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
+          $data->{$shorthand[$key]} = $this->restoreEscaped($value);
+          unset($data->{$key});
+        }
+        else {
+          $data->{$key} = $this->restoreEscaped($value);
+        }
+      }
+    }
+    else {
+      $data = $this->restoreValue($data);
     }
 
     return $data;

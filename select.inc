@@ -125,6 +125,12 @@ class SelectQuery_oci extends SelectQuery {
 
     return $query;
   }
+
+  public function groupBy($field) {
+    // Oracle don't allow GROUP BY with field alias, use original name.
+    $this->group[$field] = $this->fields[$field]['field'];
+    return $this;
+  }
 }
 
 /**

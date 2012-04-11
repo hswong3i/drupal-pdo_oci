@@ -11,6 +11,12 @@ class DrupalWebTestCase extends UnitTestCase {
     }
     elseif (strpos(dirname(__FILE__), 'oci')) {
       shell_exec("sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @" . dirname(__FILE__) . "/drupal_web_test_case.oci.sql");
+
+      require_once DRUPAL_ROOT . '/includes/install.inc';
+      require_once dirname(__FILE__)  . '/../install.inc';
+
+      $task = new DatabaseTasks_oci();
+      $task->initializeDatabase();
     }
   }
 

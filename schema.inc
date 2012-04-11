@@ -172,10 +172,10 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // With poor Oracle we have a lots of limitation.
     if (isset($spec['length'])) {
-      if ($spec['oci_type'] == 'VARCHAR2') {
+      if ($spec['oci_type'] == 'NVARCHAR2') {
         $sql .= '(' . min($spec['length'], 4000) . ')';
       }
-      elseif ($spec['oci_type'] == 'CHAR') {
+      elseif ($spec['oci_type'] == 'NCHAR') {
         $sql .= '(' . min($spec['length'], 2000) . ')';
       }
       elseif ($spec['oci_type'] == 'NUMBER') {
@@ -252,14 +252,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
     // database types back into schema types.
     // $map does not use drupal_static as its value never changes.
     static $map = array(
-      'varchar:normal'  => 'VARCHAR2',
-      'char:normal'     => 'CHAR',
+      'varchar:normal'  => 'NVARCHAR2',
+      'char:normal'     => 'NCHAR',
 
-      'text:tiny'       => 'VARCHAR2',
-      'text:small'      => 'VARCHAR2',
-      'text:medium'     => 'VARCHAR2',
-      'text:big'        => 'VARCHAR2',
-      'text:normal'     => 'VARCHAR2',
+      'text:tiny'       => 'NVARCHAR2',
+      'text:small'      => 'NVARCHAR2',
+      'text:medium'     => 'NVARCHAR2',
+      'text:big'        => 'NVARCHAR2',
+      'text:normal'     => 'NVARCHAR2',
 
       'serial:tiny'     => 'NUMBER',
       'serial:small'    => 'NUMBER',
