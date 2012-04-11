@@ -86,6 +86,10 @@ class DatabaseSchema_oci extends DatabaseSchema {
     return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($column)))->fetchField();
   }
 
+  public function escapeReserved($query) {
+    return preg_replace('/^(' . implode('|', $this->connection->getReservedWords()) . ')$/', '"$1"', $query);
+  }
+
   /**
    * Generate SQL to create a new table from a Drupal schema definition.
    *
@@ -138,13 +142,13 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add table comment.
     if (!empty($table['description'])) {
-      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $info['table'] . ' IS ' . $this->prepareComment($table['description']));
+      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $this->escapeReserved($info['table']) . ' IS ' . $this->prepareComment($table['description']));
     }
 
     // Add column comments.
     foreach ($table['fields'] as $field_name => $field) {
       if (!empty($field['description'])) {
-        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $info['table'] . '.' . $field_name . ' IS ' . $this->prepareComment($field['description']));
+        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $this->escapeReserved($info['table']) . '.' . $this->escapeReserved($field_name) . ' IS ' . $this->prepareComment($field['description']));
       }
     }
 
@@ -171,25 +175,26 @@ class DatabaseSchema_oci extends DatabaseSchema {
     }
 
     // With poor Oracle we have a lots of limitation.
-    if (isset($spec['length'])) {
-      if ($spec['oci_type'] == 'NVARCHAR2') {
-        $sql .= '(' . min($spec['length'], 4000) . ')';
-      }
-      elseif ($spec['oci_type'] == 'NCHAR') {
-        $sql .= '(' . min($spec['length'], 2000) . ')';
-      }
-      elseif ($spec['oci_type'] == 'NUMBER') {
-        $sql .= '(' . min($spec['length'], 38) . ')';
-      }
-    }
-    elseif (isset($spec['precision']) && isset($spec['scale'])) {
+    if (isset($spec['precision']) && isset($spec['scale'])) {
       $sql .= '(' . min($spec['precision'], 38) . ', ' . $spec['scale'] . ')';
+    }
+    elseif ($spec['oci_type'] == 'NVARCHAR2') {
+      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], 2000) : 2000) . ')';
+    }
+    elseif ($spec['oci_type'] == 'NCHAR') {
+      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], 1000) : 1000) . ')';
+    }
+    elseif ($spec['oci_type'] == 'NUMBER') {
+      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], 38) : 38) . ')';
     }
 
     // Oracle require DEFAULT before NULL.
     if (isset($spec['default'])) {
-      if (in_array($spec['type'], array('blob'))) {
+      if ($spec['oci_type'] == 'BLOB') {
         $default = 'EMPTY_BLOB()';
+      }
+      elseif ($spec['oci_type'] == 'NVARCHAR2' || $spec['oci_type'] == 'NCHAR') {
+        $default = "'" . $spec['default'] . "'";
       }
       else {
         $default = is_string($spec['default']) ? "'" . $spec['default'] . "'" : $spec['default'];
