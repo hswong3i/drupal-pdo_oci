@@ -17,6 +17,8 @@ include_once DRUPAL_ROOT . '/includes/database/prefetch.inc';
  */
 class DatabaseConnection_oci extends DatabaseConnection {
 
+  protected $willRollback;
+
   public function __construct(array $connection_options = array()) {
     // This driver defaults to transaction support, except if explicitly passed FALSE.
     $this->transactionSupport = !isset($connection_options['transactions']) || ($connection_options['transactions'] !== FALSE);
@@ -242,6 +244,83 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
 
     return $this->query('SELECT ' . $name . '.CURRVAL FROM DUAL')->fetchField();
+  }
+
+  public function rollback($savepoint_name = 'drupal_transaction') {
+    if (!$this->inTransaction()) {
+      throw new DatabaseTransactionNoActiveException();
+    }
+    // A previous rollback to an earlier savepoint may mean that the savepoint
+    // in question has already been rolled back.
+    if (!in_array($savepoint_name, $this->transactionLayers)) {
+      return;
+    }
+
+    // We need to find the point we're rolling back to, all other savepoints
+    // before are no longer needed.
+    while ($savepoint = array_pop($this->transactionLayers)) {
+      if ($savepoint == $savepoint_name) {
+        // Mark whole stack of transactions as needed roll back.
+        $this->willRollback = TRUE;
+        // If it is the last the transaction in the stack, then it is not a
+        // savepoint, it is the transaction itself so we will need to roll back
+        // the transaction rather than a savepoint.
+        if (empty($this->transactionLayers)) {
+          break;
+        }
+        return;
+      }
+    }
+    if ($this->supportsTransactions()) {
+      PDO::rollBack();
+    }
+  }
+
+  public function pushTransaction($name) {
+    if (!$this->supportsTransactions()) {
+      return;
+    }
+    if (isset($this->transactionLayers[$name])) {
+      throw new DatabaseTransactionNameNonUniqueException($name . " is already in use.");
+    }
+    // If we're already in a transaction then we want to create a savepoint
+    // rather than try to create another transaction.
+    if ($this->inTransaction()) {
+      $this->query('SAVEPOINT ' . $name);
+    }
+    else {
+      PDO::beginTransaction();
+    }
+    $this->transactionLayers[$name] = $name;
+  }
+
+  public function popTransaction($name) {
+    if (!$this->supportsTransactions()) {
+      return;
+    }
+    if (!$this->inTransaction()) {
+      throw new DatabaseTransactionNoActiveException();
+    }
+
+    // Commit everything since SAVEPOINT $name.
+    while($savepoint = array_pop($this->transactionLayers)) {
+      if ($savepoint != $name) continue;
+
+      // If there are no more layers left then we should commit or rollback.
+      if (empty($this->transactionLayers)) {
+        // If there was any rollback() we should roll back whole transaction.
+        if ($this->willRollback) {
+          $this->willRollback = FALSE;
+          PDO::rollBack();
+        }
+        elseif (!PDO::commit()) {
+          throw new DatabaseTransactionCommitFailedException();
+        }
+      }
+      else {
+        break;
+      }
+    }
   }
 
   protected function popCommittableTransactions() {
