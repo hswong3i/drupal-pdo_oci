@@ -138,13 +138,13 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add table comment.
     if (!empty($table['description'])) {
-      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $this->connection->escapeReservedWords($info['table']) . ' IS ' . $this->prepareComment($table['description']));
+      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $this->connection->escapeForOracle($info['table']) . ' IS ' . $this->prepareComment($table['description']));
     }
 
     // Add column comments.
     foreach ($table['fields'] as $field_name => $field) {
       if (!empty($field['description'])) {
-        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeReservedWords($info['table']) . '.' . $this->connection->escapeReservedWords($field_name) . ' IS ' . $this->prepareComment($field['description']));
+        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeForOracle($info['table']) . '.' . $this->connection->escapeForOracle($field_name) . ' IS ' . $this->prepareComment($field['description']));
       }
     }
 
@@ -390,7 +390,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add column comment.
     if (!empty($spec['description'])) {
-      $stmt = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeReservedWords($table) . '.' . $this->connection->escapeReservedWords($field) . ' IS ' . $this->prepareComment($spec['description']));
+      $stmt = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeForOracle($table) . '.' . $this->connection->escapeForOracle($field) . ' IS ' . $this->prepareComment($spec['description']));
       $this->connection->query($stmt);
     }
   }

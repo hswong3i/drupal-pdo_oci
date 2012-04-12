@@ -68,6 +68,9 @@ class InsertQuery_oci extends InsertQuery {
               $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx], PDO::PARAM_LOB);
             }
           }
+          elseif ($insert_values[$idx] === '') {
+            $stmt->bindValue(':db_insert_placeholder_' . $max_placeholder++, 'E#');
+          }
           else {
             $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx]);
           }
@@ -298,6 +301,9 @@ class UpdateQuery_oci extends UpdateQuery {
 
         // Pre-increment is faster in PHP than increment.
         ++$blob_count;
+      }
+      elseif ($fields[$field] === '') {
+        $stmt->bindValue(':db_update_placeholder_' . $max_placeholder++, 'E#');
       }
       else {
         $stmt->bindParam(':db_update_placeholder_' . $max_placeholder++, $fields[$field]);

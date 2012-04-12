@@ -17,7 +17,7 @@ include_once DRUPAL_ROOT . '/includes/database/prefetch.inc';
  */
 class DatabaseConnection_oci extends DatabaseConnection {
 
-  protected $willRollback;
+  private $reserved_words = '';
 
   public function __construct(array $connection_options = array()) {
     // This driver defaults to transaction support, except if explicitly passed FALSE.
@@ -25,6 +25,8 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
     // Transactional DDL is not available in Oracle.
     $this->transactionalDDLSupport = FALSE;
+
+    $this->reserved_words = implode('|', $this->getReservedWords());
 
     $this->connectionOptions = $connection_options;
 
@@ -113,64 +115,73 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
   public function prepareQuery($query) {
     $query = $this->prefixTables($query);
-    $query = $this->escapeReservedWords($query);
-    $query = $this->escapeEmptyString($query);
-    $query = $this->escapeLongIdentifiers($query);
+    $query = $this->escapeForOracle($query);
     return $this->prepare($query);
   }
 
+  public function escapeForOracle($query) {
+    $query = $this->escapeReservedWords($query);
+    $query = $this->escapeEmptyString($query);
+    $query = $this->escapeLongIdentifiers($query);
+    return $query;
+  }
+
   public function escapeReservedWords($query) {
-    $reserved_words = implode('|', $this->getReservedWords());
     $pattern = array(
-      '/:(' . $reserved_words . ')([\)\.\s\=\,])/',
-      '/([\(\.\s\=\,])(' . $reserved_words . ')([\)\.\s\=\,])/',
-      '/^(' . $reserved_words . ')$/',
+      '/^(' . $this->reserved_words . ')$/',
+      '/:(' . $this->reserved_words . ')([\)\.\s\=\,])/',
+      '/([\(\.\s\=\,])(' . $this->reserved_words . ')([\)\.\s\=\,])/',
     );
     $replacement = array(
+      '"$1"',
       ':$1$2',
       '$1"$2"$3',
-      '"$1"',
     );
     return preg_replace($pattern, $replacement, $query);
   }
 
   public function escapeEmptyString($query) {
-    return str_replace("''", "'E#'", $query);
+    $search = array(
+      '',
+      "''",
+    );
+    $replace = array(
+      "E#",
+      "'E#'",
+    );
+    return str_replace($search, $replace, $query);
   }
 
   public function escapeLongIdentifiers($query) {
-    return preg_replace_callback('/[a-z0-9_]{31,}/', array($this, 'escapeLongIdentifier'), $query);
+    $pattern = array(
+      '/[a-z0-9_]{31,}/',
+      '/^[a-z0-9_]{31,}$/',
+    );
+    return preg_replace_callback($pattern, array($this, 'escapeLongIdentifier'), $query);
   }
 
   public function escapeLongIdentifier($matches) {
     global $conf;
 
-    $match = $matches[0];
-
     $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
+    include $settings_file;
 
     // Do we have the mapping?
-    if (!isset($conf['long_identifiers'][$match])) {
-      // Dirty workaround to prevent duplicate append of mapping.
-      include $settings_file;
+    if (!isset($conf['long_identifiers'][$matches[0]])) {
+      // Generate the mapping with prefix.
+      $shorthand = 'L#' . crc32($matches[0]);
+      $conf['long_identifiers'][$matches[0]] = $shorthand;
+      $content = "\$conf['long_identifiers']['$matches[0]'] = '$shorthand';\n";
 
-      // Double check the mapping once again.
-      if (!isset($conf['long_identifiers'][$match])) {
-        // Generate the mapping with prefix.
-        $shorthand = 'L#' . crc32($match);
-        $conf['long_identifiers'][$match] = $shorthand;
-        $content = "\$conf['long_identifiers']['$match'] = '$shorthand';\n";
-
-        // Save the long identifiers mapping to settings.php.
-        chmod($settings_file, 0666) or die ("Can't chmod($settings_file, 0666");
-        $fh = fopen($settings_file, 'a') or die ("Can't open file.");
-        fwrite($fh, $content);
-        fclose($fh);
-        chmod($settings_file, 0444) or die ("Can't chmod($settings_file, 0444");
-      }
+      // Save the long identifiers mapping to settings.php.
+      chmod($settings_file, 0666) or die ("Can't chmod($settings_file, 0666");
+      $fh = fopen($settings_file, 'a') or die ("Can't open file.");
+      fwrite($fh, $content);
+      fclose($fh);
+      chmod($settings_file, 0444) or die ("Can't chmod($settings_file, 0444");
     }
 
-    return $conf['long_identifiers'][$match];
+    return $conf['long_identifiers'][$matches[0]];
   }
 
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
@@ -306,29 +317,26 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
 
   public $queryString;
 
+  private $shorthand = array();
+
   public function __construct(DatabaseConnection $connection, $query, array $driver_options = array()) {
+    global $conf;
+
+    include DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
+    $this->shorthand = array_flip(empty($conf['long_identifiers']) ? array() : $conf['long_identifiers']);
+
     $this->dbh = $connection;
     $this->queryString = $query;
     $this->driverOptions = $driver_options;
   }
 
-  public function escapeEmptyString($query) {
-    return $query === '' ? "E#" : $query;
-  }
-
-  public function escapeLongIdentifiers($query) {
-    return preg_replace_callback('/^[a-z0-9_]{31,}$/', array($this->dbh, 'escapeLongIdentifier'), $query);
-  }
-
   public function bindValue($parameter, $value, $data_type = PDO::PARAM_STR) {
-    $value = $this->escapeEmptyString($value);
-    $value = $this->escapeLongIdentifiers($value);
+    $value = $this->connection->escapeForOracle($value);
     return parent::bindValue($parameter, $value, $data_type);
   }
 
   public function bindParam($parameter, &$variable, $data_type = PDO::PARAM_STR, $length = 0, $driver_options = array()) {
-    $variable = $this->escapeEmptyString($variable);
-    $variable = $this->escapeLongIdentifiers($variable);
+    $variable = $this->connection->escapeForOracle($variable);
     return parent::bindParam($parameter, $variable, $data_type, $length, $driver_options);
   }
 
@@ -401,35 +409,13 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     return $this->dbh->PDOPrepare($this->queryString);
   }
 
-  private function restoreValue($data) {
-    global $conf;
-
-    $long_identifiers = empty($conf['long_identifiers']) ? array() : $conf['long_identifiers'];
-    $shorthand = array_flip($long_identifiers);
-
-    // Value stored as empty string placeholder.
-    if (is_string($data) && $data === 'E#') {
-      return '';
-    }
-    // Rare condition: why store a constraint name as value into column?
-    elseif (is_string($data) && strpos($data, 'L#') === 0 && isset($shorthand[$data])) {
-      return $shorthand[$data];
-    }
-
-    return $data;
-  }
-
   private function restoreEscaped($data) {
-    global $conf;
-
-    $long_identifiers = empty($conf['long_identifiers']) ? array() : $conf['long_identifiers'];
-    $shorthand = array_flip($long_identifiers);
-
+    // Preserve with array handling.
     if (is_array($data)) {
       foreach ($data as $key => $value) {
-        // Column name is present as shorthand.
-        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
-          $data[$shorthand[$key]] = $this->restoreEscaped($value);
+        // Column name is present as this->shorthand.
+        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
+          $data[$this->shorthand[$key]] = $this->restoreEscaped($value);
           unset($data[$key]);
         }
         else {
@@ -437,11 +423,12 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
         }
       }
     }
+    // Preserve with object handling.
     elseif (is_object($data)) {
       foreach ($data as $key => $value) {
-        // Column name is present as shorthand.
-        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
-          $data->{$shorthand[$key]} = $this->restoreEscaped($value);
+        // Column name is present as this->shorthand.
+        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
+          $data->{$this->shorthand[$key]} = $this->restoreEscaped($value);
           unset($data->{$key});
         }
         else {
@@ -449,8 +436,9 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
         }
       }
     }
-    else {
-      $data = $this->restoreValue($data);
+    // Value stored as empty string placeholder.
+    elseif (is_string($data) && $data === 'E#') {
+      return '';
     }
 
     return $data;
