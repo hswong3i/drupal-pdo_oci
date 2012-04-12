@@ -86,10 +86,6 @@ class DatabaseSchema_oci extends DatabaseSchema {
     return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($column)))->fetchField();
   }
 
-  public function escapeReserved($query) {
-    return preg_replace('/^(' . implode('|', $this->connection->getReservedWords()) . ')$/', '"$1"', $query);
-  }
-
   /**
    * Generate SQL to create a new table from a Drupal schema definition.
    *
@@ -142,13 +138,13 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add table comment.
     if (!empty($table['description'])) {
-      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $this->escapeReserved($info['table']) . ' IS ' . $this->prepareComment($table['description']));
+      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $this->connection->escapeReservedWords($info['table']) . ' IS ' . $this->prepareComment($table['description']));
     }
 
     // Add column comments.
     foreach ($table['fields'] as $field_name => $field) {
       if (!empty($field['description'])) {
-        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $this->escapeReserved($info['table']) . '.' . $this->escapeReserved($field_name) . ' IS ' . $this->prepareComment($field['description']));
+        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeReservedWords($info['table']) . '.' . $this->connection->escapeReservedWords($field_name) . ' IS ' . $this->prepareComment($field['description']));
       }
     }
 
@@ -394,7 +390,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add column comment.
     if (!empty($spec['description'])) {
-      $stmt = $this->connection->prepare('COMMENT ON COLUMN ' . $table . '.' . $field . ' IS ' . $this->prepareComment($spec['description']));
+      $stmt = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeReservedWords($table) . '.' . $this->connection->escapeReservedWords($field) . ' IS ' . $this->prepareComment($spec['description']));
       $this->connection->query($stmt);
     }
   }

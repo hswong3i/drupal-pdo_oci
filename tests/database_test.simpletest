@@ -3039,7 +3039,7 @@ class DatabaseBasicSyntaxTestCase extends DatabaseTestCase {
    * Test for string concatenation.
    */
   function testBasicConcat() {
-    $result = db_query('SELECT CONCAT(:a1, CONCAT(:a2, CONCAT(:a3, CONCAT(:a4, :a5))))', array(
+    $result = db_query('SELECT CONCAT(:a1, CONCAT(:a2, CONCAT(:a3, CONCAT(:a4, :a5)))) FROM {test}', array(
       ':a1' => 'This',
       ':a2' => ' ',
       ':a3' => 'is',

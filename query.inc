@@ -78,7 +78,7 @@ class InsertQuery_oci extends InsertQuery {
           foreach ($table_information->serial_fields as $index => $serial_field) {
             $serial_key = array_search($serial_field, $this->insertFields);
             if ($serial_key !== FALSE) {
-              $serial_value = $insert_values[$serial_key];
+              $serial_value = $insert_values[$serial_key] > 1 ? $insert_values[$serial_key] : 1;
 
               // Force $last_insert_id to the specified value. This is only done
               // if $index is 0.

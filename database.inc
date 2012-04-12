@@ -87,6 +87,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
     catch (PDOException $e) {
       //dpr(array_filter(array($stmt->queryString, $args)));
+      //dpr($e->errorInfo);
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -112,26 +113,23 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
   public function prepareQuery($query) {
     $query = $this->prefixTables($query);
-    $query = $this->escapeANSI($query);
-    $query = $this->escapeReserved($query);
+    $query = $this->escapeReservedWords($query);
     $query = $this->escapeEmptyString($query);
     $query = $this->escapeLongIdentifiers($query);
     return $this->prepare($query);
   }
 
-  public function escapeANSI($query) {
-    $query = (preg_match("/^\s*SELECT\s*/", $query) && !preg_match("/^\s*SELECT\s*(.*)\s*FROM\s*/", $query)) ? $query . ' FROM DUAL' : $query;
-    return $query;
-  }
-
-  public function escapeReserved($query) {
+  public function escapeReservedWords($query) {
+    $reserved_words = implode('|', $this->getReservedWords());
     $pattern = array(
-      '/:(' . implode('|', $this->getReservedWords()) . ')([\)\.\s\=\,])/',
-      '/([\(\.\s\=\,])(' . implode('|', $this->getReservedWords()) . ')([\)\.\s\=\,])/',
+      '/:(' . $reserved_words . ')([\)\.\s\=\,])/',
+      '/([\(\.\s\=\,])(' . $reserved_words . ')([\)\.\s\=\,])/',
+      '/^(' . $reserved_words . ')$/',
     );
     $replacement = array(
       ':$1$2',
       '$1"$2"$3',
+      '"$1"',
     );
     return preg_replace($pattern, $replacement, $query);
   }
@@ -145,23 +143,23 @@ class DatabaseConnection_oci extends DatabaseConnection {
   }
 
   public function escapeLongIdentifier($matches) {
-    global $databases;
+    global $conf;
 
     $match = $matches[0];
 
     $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
 
     // Do we have the mapping?
-    if (!isset($databases['long_identifiers'][$match])) {
+    if (!isset($conf['long_identifiers'][$match])) {
       // Dirty workaround to prevent duplicate append of mapping.
       include $settings_file;
 
       // Double check the mapping once again.
-      if (!isset($databases['long_identifiers'][$match])) {
+      if (!isset($conf['long_identifiers'][$match])) {
         // Generate the mapping with prefix.
         $shorthand = 'L#' . crc32($match);
-        $databases['long_identifiers'][$match] = $shorthand;
-        $content = "\$databases['long_identifiers']['$match'] = '$shorthand';\n";
+        $conf['long_identifiers'][$match] = $shorthand;
+        $content = "\$conf['long_identifiers']['$match'] = '$shorthand';\n";
 
         // Save the long identifiers mapping to settings.php.
         chmod($settings_file, 0666) or die ("Can't chmod($settings_file, 0666");
@@ -172,7 +170,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
 
-    return $databases['long_identifiers'][$match];
+    return $conf['long_identifiers'][$match];
   }
 
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
@@ -243,82 +241,13 @@ class DatabaseConnection_oci extends DatabaseConnection {
       throw new Exception('The name of the sequence is mandatory for Oracle.');
     }
 
-    return $this->query('SELECT ' . $name . '.CURRVAL FROM DUAL')->fetchField();
-  }
-
-  public function rollback($savepoint_name = 'drupal_transaction') {
-    if (!$this->inTransaction()) {
-      throw new DatabaseTransactionNoActiveException();
+    try {
+      return $this->query('SELECT ' . $name . '.CURRVAL FROM DUAL')->fetchField();
     }
-    // A previous rollback to an earlier savepoint may mean that the savepoint
-    // in question has already been rolled back.
-    if (!in_array($savepoint_name, $this->transactionLayers)) {
-      return;
-    }
-
-    // We need to find the point we're rolling back to, all other savepoints
-    // before are no longer needed.
-    while ($savepoint = array_pop($this->transactionLayers)) {
-      if ($savepoint == $savepoint_name) {
-        // Mark whole stack of transactions as needed roll back.
-        $this->willRollback = TRUE;
-        // If it is the last the transaction in the stack, then it is not a
-        // savepoint, it is the transaction itself so we will need to roll back
-        // the transaction rather than a savepoint.
-        if (empty($this->transactionLayers)) {
-          break;
-        }
-        return;
-      }
-    }
-    if ($this->supportsTransactions()) {
-      PDO::rollBack();
-    }
-  }
-
-  public function pushTransaction($name) {
-    if (!$this->supportsTransactions()) {
-      return;
-    }
-    if (isset($this->transactionLayers[$name])) {
-      throw new DatabaseTransactionNameNonUniqueException($name . " is already in use.");
-    }
-    // If we're already in a transaction then we want to create a savepoint
-    // rather than try to create another transaction.
-    if ($this->inTransaction()) {
-      $this->query('SAVEPOINT ' . $name);
-    }
-    else {
-      PDO::beginTransaction();
-    }
-    $this->transactionLayers[$name] = $name;
-  }
-
-  public function popTransaction($name) {
-    if (!$this->supportsTransactions()) {
-      return;
-    }
-    if (!$this->inTransaction()) {
-      throw new DatabaseTransactionNoActiveException();
-    }
-
-    // Commit everything since SAVEPOINT $name.
-    while($savepoint = array_pop($this->transactionLayers)) {
-      if ($savepoint != $name) continue;
-
-      // If there are no more layers left then we should commit or rollback.
-      if (empty($this->transactionLayers)) {
-        // If there was any rollback() we should roll back whole transaction.
-        if ($this->willRollback) {
-          $this->willRollback = FALSE;
-          PDO::rollBack();
-        }
-        elseif (!PDO::commit()) {
-          throw new DatabaseTransactionCommitFailedException();
-        }
-      }
-      else {
-        break;
+    catch (PDOException $e) {
+      // Ignore ORA-08002: sequence $name.CURRVAL is not yet defined in this session.
+      if ($e->errorInfo[1] !== '8002') {
+        throw $e;
       }
     }
   }
@@ -339,25 +268,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
         }
       }
       else {
-        // Attempt to release this savepoint in the standard way.
-        try {
-          $this->query('RELEASE SAVEPOINT ' . $name);
-        }
-        catch (PDOException $e) {
-          // To avoid exceptions when no actual error has occurred, we silently
-          // succeed for Oracle error code 900 ("invalid SQL statement").
-          if ($e->errorInfo[1] == '900') {
-            // If one SAVEPOINT was released automatically, then all were.
-            // Therefore, clean the transaction stack.
-            $this->transactionLayers = array();
-            // We also have to explain to PDO that the transaction stack has
-            // been cleaned-up.
-            PDO::commit();
-          }
-          else {
-            throw $e;
-          }
-        }
+        $this->query('BEGIN NULL; END;');
       }
     }
   }
@@ -491,7 +402,9 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
   }
 
   private function restoreValue($data) {
-    $long_identifiers = empty($databases['long_identifiers']) ? array() : $databases['long_identifiers'];
+    global $conf;
+
+    $long_identifiers = empty($conf['long_identifiers']) ? array() : $conf['long_identifiers'];
     $shorthand = array_flip($long_identifiers);
 
     // Value stored as empty string placeholder.
@@ -507,9 +420,9 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
   }
 
   private function restoreEscaped($data) {
-    global $databases;
+    global $conf;
 
-    $long_identifiers = empty($databases['long_identifiers']) ? array() : $databases['long_identifiers'];
+    $long_identifiers = empty($conf['long_identifiers']) ? array() : $conf['long_identifiers'];
     $shorthand = array_flip($long_identifiers);
 
     if (is_array($data)) {
