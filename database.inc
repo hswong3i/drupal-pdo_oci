@@ -53,9 +53,30 @@ class DatabaseConnection_oci extends DatabaseConnection {
     );
     parent::__construct($dsn, $connection_options['username'], $connection_options['password'], $connection_options['pdo']);
 
+    $connection_options += array(
+      'init_commands' => array(),
+    );
+    $connection_options['init_commands'] += array(
+      // Force cursor sharing to prevent unfair modules.
+      // See http://www.dba-oracle.com/t_cursor_sharing_force.htm.
+      "ALTER SESSION SET CURSOR_SHARING = FORCE",
+      // Force decimal characters used in string representation of floats to
+      // avoid casting problems.
+      "ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'",
+      // Force date format used in string representation of dates to avoid
+      // casting problems.
+      "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD'",
+      // Force timestamp format used in string representation of time to avoid
+      // casting problems.
+      "ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'HH24:MI:SS'",
+      // Force timestamp format used in string representation of datetime to
+      // avoid casting problems.
+      "ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS'",
+    );
+
     // Execute Oracle init_commands.
-    if (isset($connection_options['init_commands'])) {
-      $this->exec(implode('; ', $connection_options['init_commands']));
+    foreach ($connection_options['init_commands'] as $init_command) {
+      $this->exec($init_command);
     }
   }
 
@@ -90,8 +111,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
-      //dpr(array_filter(array($stmt->queryString, $args)));
-      //dpr($e->errorInfo);
+      dpr(array_filter(array($stmt->queryString, $args)));
+      dpr($e->errorInfo);
+      dpr(debug_backtrace(false));
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -223,7 +245,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
   }
 
   /**
-   * Retrive a the next id in a sequence.
+   * Retrive a next id in a sequence.
    *
    * Oracle has built in sequence. We'll use these instead of inserting
    * and updating a sequences table.
@@ -247,7 +269,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     $this->query('CREATE SEQUENCE ' . $sequence_name. ' MINVALUE 1 INCREMENT BY 1 START WITH ' . ($existing_id + 1) . ' NOCACHE NOORDER NOCYCLE');
 
     // Retrive the next id. We know this will be as high as we want it.
-    $id = $this->query('SELECT '. $sequence_name . '.NEXTVAL FROM DUAL')-> fetchField();
+    $id = $this->query('SELECT '. $sequence_name . '.NEXTVAL FROM DUAL')->fetchField();
 
     return $id;
   }
