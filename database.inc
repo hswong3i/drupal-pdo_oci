@@ -30,7 +30,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
     $this->connectionOptions = $connection_options;
 
-    $dsn = 'oci:dbname=//' . $connection_options['host'] . ':' . (empty($connection_options['port']) ? '1521' : $connection_options['port']) . '/' . $connection_options['database'] . ';charset=AL32UTF8';
+    $dsn = 'oci:dbname=//' . $connection_options['host'] . ':' . (empty($connection_options['port']) ? '1521' : $connection_options['port']) . '/' . $connection_options['database'];
 
     // Allow PDO options to be overridden.
     $connection_options += array(
@@ -97,6 +97,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
         }
         else {
           $e->query_string = $query;
+        }
+        if ($e->errorInfo[1] == '1') {
+          $e->errorInfo[0] = '23000';
         }
         $e->args = $args;
         throw $e;

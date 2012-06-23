@@ -1,6 +1,6 @@
 /**
  * To login sqlplus:
- *   sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @drupal_web_test_case.sql
+ *   sqlplus SYS@AL32UTF8/CHANGE AS SYSDBA @drupal_web_test_case.oci.sql
  */
 
 -- Connect with SYS and create new user "test".
