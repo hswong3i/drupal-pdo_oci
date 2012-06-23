@@ -5,6 +5,8 @@
  * Database interface code for Oracle database servers.
  */
 
+require_once dirname(__FILE__) . '/tests/devel.inc';
+
 /**
  * @ingroup database
  * @{
@@ -372,14 +374,15 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
       $this->throwPDOException();
     }
 
-    // Fetch all the data from the reply, in order to release any lock
-    // as soon as possible.
     try {
+      // Fetch all the data from the reply, in order to release any lock
+      // as soon as possible.
       $this->rowCount = $statement->rowCount();
       $this->data = $statement->fetchAll(PDO::FETCH_ASSOC);
       // Destroy the statement as soon as possible. See
       // DatabaseConnection_sqlite::PDOPrepare() for explanation.
       unset($statement);
+      $this->resultRowCount = count($this->data);
     }
     catch (PDOException $e) {
       // Ignore ORA-24374: define not done before fetch or execute and fetch.
@@ -387,8 +390,6 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
         throw $e;
       }
     }
-
-    $this->resultRowCount = count($this->data);
 
     if ($this->resultRowCount) {
       $this->columnNames = array_keys($this->data[0]);

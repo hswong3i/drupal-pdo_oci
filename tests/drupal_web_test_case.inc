@@ -1,5 +1,6 @@
 <?php
 
+require_once dirname(__FILE__) . '/devel.inc';
 require_once dirname(__FILE__) . '/simpletest/autorun.php';
 require_once dirname(__FILE__) . '/simpletest/reporter.php';
 
@@ -52,29 +53,6 @@ class DrupalHtmlReporter extends HtmlReporter {
   }
 }
 SimpleTest::prefer(new DrupalHtmlReporter());
-
-function dpr($input, $return = FALSE, $name = NULL) {
-  return dprint_r($input, $return, $name);
-}
-
-function dprint_r($input, $return = FALSE, $name = NULL, $function = 'print_r', $check= TRUE) {
-  if ($name) {
-    $name .= ' => ';
-  }
-
-  ob_start();
-  $function($input);
-  $output = ob_get_clean();
-
-  $printed_value = '<pre>'. $name . $output .'</pre>';
-
-  if ($return) {
-    return $printed_value;
-  }
-  else {
-    print $printed_value;
-  }
-}
 
 function database_test_schema() {
   $schema['test'] = array(
