@@ -56,11 +56,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
       foreach ($result as $column) {
         $table_information->blob_fields[strtolower($column->column_name)] = TRUE;
       }
-      // Don't use {} around user_constraints and user_cons_columns table/
-      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS  WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($table_name)));
+      // Don't use {} around user_constraints and user_cons_columns table.
+      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($table_name)));
       foreach ($result as $column) {
-        $table_information->sequences[] = $this->connection->makeSequenceName(strtolower($column->table_name), strtolower($column->column_name));
-        $table_information->serial_fields[] = strtolower($column->column_name);
+        $sequence = $this->connection->makeSequenceName(strtolower($column->table_name), strtolower($column->column_name));
+        if ($this->sequenceExists($sequence)) {
+          $table_information->sequences[] = $sequence;
+          $table_information->serial_fields[] = strtolower($column->column_name);
+        }
       }
       // Don't use {} around user_indexes table.
       $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => strtoupper($table_name)));
@@ -84,6 +87,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Don't use {} around user_tab_cols table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($column)))->fetchField();
+  }
+
+  public function sequenceExists($sequence) {
+    // Sequence generated may usually >30 characters so need escape.
+    $sequence = $this->connection->escapeForOracle($sequence);
+
+    // Don't use {} around user_sequences table.
+    return (bool) $this->connection->query("SELECT 1 FROM USER_SEQUENCES WHERE SEQUENCE_NAME = :sequence_name", array(':sequence_name' => strtoupper($sequence)))->fetchField();
   }
 
   /**
