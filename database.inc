@@ -87,13 +87,15 @@ class DatabaseConnection_oci extends DatabaseConnection {
     try {
       if ($query instanceof DatabaseStatementInterface) {
         $stmt = $query;
-        //dpr(array_filter(array($stmt->queryString, $args)));
+        dprint_r(array_filter(array($stmt->queryString, $args)));
+        ddebug_backtrace(true, 6);
         $stmt->execute(NULL, $options);
       }
       else {
         $this->expandArguments($query, $args);
         $stmt = $this->prepareQuery($query);
-        //dpr(array_filter(array($stmt->queryString, $args)));
+        dprint_r(array_filter(array($stmt->queryString, $args)));
+        ddebug_backtrace(true, 6);
         $stmt->execute($args, $options);
       }
 
@@ -111,9 +113,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
-      dpr(array_filter(array($stmt->queryString, $args)));
-      dpr($e->errorInfo);
-      dpr(debug_backtrace(false));
+      dprint_r(array_filter(array($stmt->queryString, $args)));
+      dprint_r($e->errorInfo);
+      ddebug_backtrace();
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -122,7 +124,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
         else {
           $e->query_string = $query;
         }
-        if ($e->errorInfo[1] == '1') {
+        if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '1')) {
           $e->errorInfo[0] = '23000';
         }
         $e->args = $args;
@@ -257,15 +259,18 @@ class DatabaseConnection_oci extends DatabaseConnection {
     // because the prefix may change, for example, like it does in simpletests.
     $sequence_name = $this->makeSequenceName('sequences', 'value');
 
-    // When Oracle gets a value too small then it will lock the table,
-    // retry the INSERT and if is's still too small than alter the sequence.
-    $id = $this->query('SELECT ' . $sequence_name . '.NEXTVAL FROM DUAL')->fetchField();
-    if ($id > $existing_id) {
-      return $id;
+    if ((bool) $this->query("SELECT 1 FROM USER_SEQUENCES WHERE SEQUENCE_NAME = :sequence_name", array(':sequence_name' => strtoupper($this->escapeForOracle($sequence_name))))->fetchField()) {
+      // When Oracle gets a value too small then it will lock the table,
+      // retry the INSERT and if is's still too small than alter the sequence.
+      $id = $this->query('SELECT ' . $sequence_name . '.NEXTVAL FROM DUAL')->fetchField();
+      if ($id > $existing_id) {
+        return $id;
+      }
+
+      // Reset the sequence to a higher value than the existing id.
+      $this->query('DROP SEQUENCE ' . $sequence_name);
     }
 
-    // Reset the sequence to a higher value than the existing id.
-    $this->query('DROP SEQUENCE ' . $sequence_name);
     $this->query('CREATE SEQUENCE ' . $sequence_name. ' MINVALUE 1 INCREMENT BY 1 START WITH ' . ($existing_id + 1) . ' NOCACHE NOORDER NOCYCLE');
 
     // Retrive the next id. We know this will be as high as we want it.
@@ -284,7 +289,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
     catch (PDOException $e) {
       // Ignore ORA-08002: sequence $name.CURRVAL is not yet defined in this session.
-      if ($e->errorInfo[1] !== '8002') {
+      if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '8002')) {
+        dprint_r($e->errorInfo);
+        ddebug_backtrace();
         throw $e;
       }
     }
@@ -301,12 +308,19 @@ class DatabaseConnection_oci extends DatabaseConnection {
       // If there are no more layers left then we should commit.
       unset($this->transactionLayers[$name]);
       if (empty($this->transactionLayers)) {
-        if (!PDO::commit()) {
-          throw new DatabaseTransactionCommitFailedException();
+        try {
+          if (!PDO::commit()) {
+            throw new DatabaseTransactionCommitFailedException();
+          }
         }
-      }
-      else {
-        $this->query('BEGIN NULL; END;');
+        catch (Exception $e) {
+          // Ignore ORA-22297: warning: Open LOBs exist at transaction commit time.
+          if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '22297')) {
+            dprint_r($e->errorInfo);
+            ddebug_backtrace();
+            throw $e;
+          }
+        }
       }
     }
   }
@@ -409,6 +423,8 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     catch (PDOException $e) {
       // Ignore ORA-24374: define not done before fetch or execute and fetch.
       if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '24374')) {
+        dprint_r($e->errorInfo);
+        ddebug_backtrace();
         throw $e;
       }
     }
@@ -465,6 +481,11 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     // Value stored as empty string placeholder.
     elseif (is_string($data) && $data === 'E#') {
       return '';
+    }
+    // pdo_oci return bytea as stream, so we just need to use Streams API.
+    // Check http://bugs.php.net/bug.php?id=37124 for more information.
+    elseif (is_resource($data) && ($content = stream_get_contents($data)) !== FALSE) {
+      return $content;
     }
 
     return $data;

@@ -2,8 +2,8 @@
 
 openlog('pdo_oci', LOG_PID | LOG_PERROR, LOG_USER);
 
-function dpr($input, $return = FALSE, $name = NULL) {
-  return dprint_r($input, $return, $name);
+function ddebug_backtrace($return = FALSE, $pop = 0) {
+  return dprint_r(debug_backtrace($return, $pop));
 }
 
 function dprint_r($input, $return = FALSE, $name = NULL, $function = 'print_r', $check= TRUE) {

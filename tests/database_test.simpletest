@@ -2065,6 +2065,7 @@ class DatabaseSelectComplexTestCase extends DatabaseTestCase {
   function IGNORE_testHavingCountQuery() {
     $query = db_select('test')
       ->extend('PagerDefault')
+      ->groupBy('age')
       ->having('age + 1 > 0');
     $query->addField('test', 'age');
     $query->addExpression('age + 1');
@@ -2763,25 +2764,25 @@ class DatabaseRegressionTestCase extends DatabaseTestCase {
   /**
    * Test the db_table_exists() function.
    */
-  function IGNORE_testDBTableExists() {
-    $this->assertIdentical(TRUE, db_table_exists('node'), t('Returns true for existent table.'));
+  function testDBTableExists() {
+    $this->assertIdentical(TRUE, db_table_exists('test'), t('Returns true for existent table.'));
     $this->assertIdentical(FALSE, db_table_exists('nosuchtable'), t('Returns false for nonexistent table.'));
   }
 
   /**
    * Test the db_field_exists() function.
    */
-  function IGNORE_testDBFieldExists() {
-    $this->assertIdentical(TRUE, db_field_exists('node', 'nid'), t('Returns true for existent column.'));
-    $this->assertIdentical(FALSE, db_field_exists('node', 'nosuchcolumn'), t('Returns false for nonexistent column.'));
+  function testDBFieldExists() {
+    $this->assertIdentical(TRUE, db_field_exists('test', 'id'), t('Returns true for existent column.'));
+    $this->assertIdentical(FALSE, db_field_exists('test', 'nosuchcolumn'), t('Returns false for nonexistent column.'));
   }
 
   /**
    * Test the db_index_exists() function.
    */
-  function IGNORE_testDBIndexExists() {
-    $this->assertIdentical(TRUE, db_index_exists('node', 'node_created'), t('Returns true for existent index.'));
-    $this->assertIdentical(FALSE, db_index_exists('node', 'nosuchindex'), t('Returns false for nonexistent index.'));
+  function testDBIndexExists() {
+    $this->assertIdentical(TRUE, db_index_exists('test', 'ages'), t('Returns true for existent index.'));
+    $this->assertIdentical(FALSE, db_index_exists('test', 'nosuchindex'), t('Returns false for nonexistent index.'));
   }
 }
 
@@ -3117,6 +3118,39 @@ class DatabaseBasicSyntaxTestCase extends DatabaseTestCase {
       ->execute()
       ->fetchField();
     $this->assertIdentical($num_matches, '1', t('Found 1 record.'));
+  }
+}
+
+/**
+ * Test case sensitivity handling.
+ */
+class DatabaseCaseSensitivityTestCase extends DatabaseTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Case sensitivity',
+      'description' => 'Test handling case sensitive collation.',
+      'group' => 'Database',
+    );
+  }
+
+  /**
+   * Test BINARY collation in MySQL.
+   */
+  function testCaseSensitiveInsert() {
+    $num_records_before = db_query('SELECT COUNT(*) FROM {test}')->fetchField();
+
+    $john = db_insert('test')
+      ->fields(array(
+        'name' => 'john', // <- A record already exists with name 'John'.
+        'age' => 2,
+        'job' => 'Baby',
+      ))
+      ->execute();
+
+    $num_records_after = db_query('SELECT COUNT(*) FROM {test}')->fetchField();
+    $this->assertIdentical($num_records_before + 1, (int) $num_records_after, t('Record inserts correctly.'));
+    $saved_age = db_query('SELECT age FROM {test} WHERE name = :name', array(':name' => 'john'))->fetchField();
+    $this->assertIdentical($saved_age, '2', t('Can retrieve after inserting.'));
   }
 }
 
@@ -3721,7 +3755,7 @@ class DatabaseNextIdCase extends DrupalWebTestCase {
   /**
    * Test that the sequences API work.
    */
-  function IGNORE_testDbNextId() {
+  function testDbNextId() {
     $first = db_next_id();
     $second = db_next_id();
     // We can test for exact increase in here because we know there is no
