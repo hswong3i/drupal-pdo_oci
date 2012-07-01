@@ -87,15 +87,15 @@ class DatabaseConnection_oci extends DatabaseConnection {
     try {
       if ($query instanceof DatabaseStatementInterface) {
         $stmt = $query;
-        dprint_r(array_filter(array($stmt->queryString, $args)));
-        ddebug_backtrace(true, 6);
+        #dprint_r(array_filter(array($stmt->queryString, $args)));
+        #ddebug_backtrace(true, 6);
         $stmt->execute(NULL, $options);
       }
       else {
         $this->expandArguments($query, $args);
         $stmt = $this->prepareQuery($query);
-        dprint_r(array_filter(array($stmt->queryString, $args)));
-        ddebug_backtrace(true, 6);
+        #dprint_r(array_filter(array($stmt->queryString, $args)));
+        #ddebug_backtrace(true, 6);
         $stmt->execute($args, $options);
       }
 
@@ -113,9 +113,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
-      dprint_r(array_filter(array($stmt->queryString, $args)));
-      dprint_r($e->errorInfo);
-      ddebug_backtrace();
+      #dprint_r(array_filter(array($stmt->queryString, $args)));
+      #dprint_r($e->errorInfo);
+      #ddebug_backtrace();
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -290,11 +290,88 @@ class DatabaseConnection_oci extends DatabaseConnection {
     catch (PDOException $e) {
       // Ignore ORA-08002: sequence $name.CURRVAL is not yet defined in this session.
       if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '8002')) {
-        dprint_r($e->errorInfo);
-        ddebug_backtrace();
+        #dprint_r($e->errorInfo);
+        #ddebug_backtrace();
         throw $e;
       }
     }
+  }
+
+  public function rollback($savepoint_name = 'drupal_transaction') {
+    if (!$this->supportsTransactions()) {
+      return;
+    }
+    if (!$this->inTransaction()) {
+      throw new DatabaseTransactionNoActiveException();
+    }
+    // A previous rollback to an earlier savepoint may mean that the savepoint
+    // in question has already been accidentally committed.
+    if (!isset($this->transactionLayers[$savepoint_name])) {
+      throw new DatabaseTransactionNoActiveException();
+    }
+
+    // We need to find the point we're rolling back to, all other savepoints
+    // before are no longer needed. If we rolled back other active savepoints,
+    // we need to throw an exception.
+    $rolled_back_other_active_savepoints = FALSE;
+    while ($savepoint = array_pop($this->transactionLayers)) {
+      if ($savepoint == $savepoint_name) {
+        // If it is the last the transaction in the stack, then it is not a
+        // savepoint, it is the transaction itself so we will need to roll back
+        // the transaction rather than a savepoint.
+        if (empty($this->transactionLayers)) {
+          break;
+        }
+        $this->query('ROLLBACK TO SAVEPOINT ' . $savepoint);
+        $this->popCommittableTransactions();
+        if ($rolled_back_other_active_savepoints) {
+          throw new DatabaseTransactionOutOfOrderException();
+        }
+        return;
+      }
+      else {
+        $rolled_back_other_active_savepoints = TRUE;
+      }
+    }
+    parent::rollBack();
+    if ($rolled_back_other_active_savepoints) {
+      throw new DatabaseTransactionOutOfOrderException();
+    }
+  }
+
+  public function pushTransaction($name) {
+    if (!$this->supportsTransactions()) {
+      return;
+    }
+    if (isset($this->transactionLayers[$name])) {
+      throw new DatabaseTransactionNameNonUniqueException($name . " is already in use.");
+    }
+    // If we're already in a transaction then we want to create a savepoint
+    // rather than try to create another transaction.
+    if ($this->inTransaction()) {
+      $this->query('SAVEPOINT ' . $name);
+    }
+    else {
+      parent::beginTransaction();
+    }
+    $this->transactionLayers[$name] = $name;
+  }
+
+  public function popTransaction($name) {
+    if (!$this->supportsTransactions()) {
+      return;
+    }
+    // The transaction has already been committed earlier. There is nothing we
+    // need to do. If this transaction was part of an earlier out-of-order
+    // rollback, an exception would already have been thrown by
+    // Database::rollback().
+    if (!isset($this->transactionLayers[$name])) {
+      return;
+    }
+
+    // Mark this layer as committable.
+    $this->transactionLayers[$name] = FALSE;
+    $this->popCommittableTransactions();
   }
 
   protected function popCommittableTransactions() {
@@ -316,8 +393,8 @@ class DatabaseConnection_oci extends DatabaseConnection {
         catch (Exception $e) {
           // Ignore ORA-22297: warning: Open LOBs exist at transaction commit time.
           if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '22297')) {
-            dprint_r($e->errorInfo);
-            ddebug_backtrace();
+            #dprint_r($e->errorInfo);
+            #ddebug_backtrace();
             throw $e;
           }
         }
@@ -423,8 +500,8 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     catch (PDOException $e) {
       // Ignore ORA-24374: define not done before fetch or execute and fetch.
       if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '24374')) {
-        dprint_r($e->errorInfo);
-        ddebug_backtrace();
+        #dprint_r($e->errorInfo);
+        #ddebug_backtrace();
         throw $e;
       }
     }
