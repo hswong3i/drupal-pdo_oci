@@ -333,7 +333,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
         $rolled_back_other_active_savepoints = TRUE;
       }
     }
-    parent::rollBack();
+    PDO::rollBack();
     if ($rolled_back_other_active_savepoints) {
       throw new DatabaseTransactionOutOfOrderException();
     }
