@@ -50,6 +50,8 @@ class DatabaseConnection_oci extends DatabaseConnection {
       PDO::ATTR_STRINGIFY_FETCHES => TRUE,
       // Force column names to lower case.
       PDO::ATTR_CASE => PDO::CASE_LOWER,
+      // Enable autocommit on every single statement.
+      PDO::ATTR_AUTOCOMMIT => TRUE,
     );
     parent::__construct($dsn, $connection_options['username'], $connection_options['password'], $connection_options['pdo']);
 
@@ -87,15 +89,11 @@ class DatabaseConnection_oci extends DatabaseConnection {
     try {
       if ($query instanceof DatabaseStatementInterface) {
         $stmt = $query;
-        #dprint_r(array_filter(array($stmt->queryString, $args)));
-        #ddebug_backtrace(true, 6);
         $stmt->execute(NULL, $options);
       }
       else {
         $this->expandArguments($query, $args);
         $stmt = $this->prepareQuery($query);
-        #dprint_r(array_filter(array($stmt->queryString, $args)));
-        #ddebug_backtrace(true, 6);
         $stmt->execute($args, $options);
       }
 
@@ -113,9 +111,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
-      #dprint_r(array_filter(array($stmt->queryString, $args)));
-      #dprint_r($e->errorInfo);
-      #ddebug_backtrace();
+      dprint_r(array_filter(array($stmt->queryString, $args)));
+      dprint_r($e->errorInfo);
+      ddebug_backtrace();
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -290,8 +288,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
     catch (PDOException $e) {
       // Ignore ORA-08002: sequence $name.CURRVAL is not yet defined in this session.
       if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '8002')) {
-        #dprint_r($e->errorInfo);
-        #ddebug_backtrace();
         throw $e;
       }
     }
@@ -333,7 +329,12 @@ class DatabaseConnection_oci extends DatabaseConnection {
         $rolled_back_other_active_savepoints = TRUE;
       }
     }
-    PDO::rollBack();
+
+    // Just use raw SQL instead of PDO::rollBack() to prevent PHP bugs.
+    $this->query('ROLLBACK');
+    // Ensure we are back to autocommit mode after transaction.
+    $this->setAttribute(PDO::ATTR_AUTOCOMMIT, TRUE);
+
     if ($rolled_back_other_active_savepoints) {
       throw new DatabaseTransactionOutOfOrderException();
     }
@@ -352,7 +353,10 @@ class DatabaseConnection_oci extends DatabaseConnection {
       $this->query('SAVEPOINT ' . $name);
     }
     else {
-      parent::beginTransaction();
+      // Ensure we are NOT in autocommit mode before transaction start.
+      $this->setAttribute(PDO::ATTR_AUTOCOMMIT, FALSE);
+      // Just use raw SQL instead of PDO::beginTransaction() to prevent PHP bugs.
+      $this->query('COMMIT');
     }
     $this->transactionLayers[$name] = $name;
   }
@@ -386,15 +390,16 @@ class DatabaseConnection_oci extends DatabaseConnection {
       unset($this->transactionLayers[$name]);
       if (empty($this->transactionLayers)) {
         try {
-          if (!PDO::commit()) {
+          // Use raw SQL instead of PDO::commit() to prevent PHP bugs.
+          if (!$this->query('COMMIT')) {
             throw new DatabaseTransactionCommitFailedException();
           }
+          // Ensure we are back to autocommit mode after transaction.
+          $this->setAttribute(PDO::ATTR_AUTOCOMMIT, TRUE);
         }
         catch (Exception $e) {
           // Ignore ORA-22297: warning: Open LOBs exist at transaction commit time.
           if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '22297')) {
-            #dprint_r($e->errorInfo);
-            #ddebug_backtrace();
             throw $e;
           }
         }
@@ -449,12 +454,12 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
   }
 
   public function bindValue($parameter, $value, $data_type = PDO::PARAM_STR) {
-    $value = $this->connection->escapeForOracle($value);
+    $value = $this->dbh->escapeForOracle($value);
     return parent::bindValue($parameter, $value, $data_type);
   }
 
   public function bindParam($parameter, &$variable, $data_type = PDO::PARAM_STR, $length = 0, $driver_options = array()) {
-    $variable = $this->connection->escapeForOracle($variable);
+    $variable = $this->dbh->escapeForOracle($variable);
     return parent::bindParam($parameter, $variable, $data_type, $length, $driver_options);
   }
 
@@ -500,8 +505,6 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     catch (PDOException $e) {
       // Ignore ORA-24374: define not done before fetch or execute and fetch.
       if (!(isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '24374')) {
-        #dprint_r($e->errorInfo);
-        #ddebug_backtrace();
         throw $e;
       }
     }
@@ -525,6 +528,12 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
   }
 
   public function getStatement($query, &$args = array()) {
+    // Escape for array handling.
+    if (is_array($args)) {
+      foreach ($args as $key => $value) {
+        $args[$key] = $value === '' ? 'E#' : $value;
+      }
+    }
     return $this->dbh->PDOPrepare($this->queryString);
   }
 
@@ -559,6 +568,7 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     elseif (is_string($data) && $data === 'E#') {
       return '';
     }
+    // LOBs greater than 4000 bytes are always stored externally.
     // pdo_oci return bytea as stream, so we just need to use Streams API.
     // Check http://bugs.php.net/bug.php?id=37124 for more information.
     elseif (is_resource($data) && ($content = stream_get_contents($data)) !== FALSE) {

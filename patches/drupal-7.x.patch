@@ -1,3 +1,16 @@
+diff --git includes/actions.inc includes/actions.inc
+index ed43af4..596eae8 100644
+--- includes/actions.inc
++++ includes/actions.inc
+@@ -273,7 +273,7 @@ function actions_function_lookup($hash) {
+  */
+ function actions_synchronize($delete_orphans = FALSE) {
+   $actions_in_code = actions_list(TRUE);
+-  $actions_in_db = db_query("SELECT aid, callback, label FROM {actions} WHERE parameters = ''")->fetchAllAssoc('callback', PDO::FETCH_ASSOC);
++  $actions_in_db = db_query("SELECT aid, callback, label FROM {actions} WHERE LENGTH(parameters) = 0")->fetchAllAssoc('callback', PDO::FETCH_ASSOC);
+ 
+   // Go through all the actions provided by modules.
+   foreach ($actions_in_code as $callback => $array) {
 diff --git modules/simpletest/tests/database_test.test modules/simpletest/tests/database_test.test
 index 6608336..28cb28f 100644
 --- modules/simpletest/tests/database_test.test

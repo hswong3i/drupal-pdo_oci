@@ -293,14 +293,21 @@ class UpdateQuery_oci extends UpdateQuery {
 
     foreach ($fields as $field => $value) {
       if (isset($table_information->blob_fields[$field])) {
-        $blobs[$blob_count] = fopen('php://memory', 'a');
-        fwrite($blobs[$blob_count], $value);
-        rewind($blobs[$blob_count]);
+        if (!is_null($fields[$field])) {
+          $blobs[$blob_count] = fopen('php://memory', 'a');
+          fwrite($blobs[$blob_count], $value);
+          rewind($blobs[$blob_count]);
 
-        $stmt->bindParam(':db_update_placeholder_' . $max_placeholder++, $blobs[$blob_count], PDO::PARAM_LOB);
+          $stmt->bindParam(':db_update_placeholder_' . $max_placeholder++, $blobs[$blob_count], PDO::PARAM_LOB);
 
-        // Pre-increment is faster in PHP than increment.
-        ++$blob_count;
+          // Pre-increment is faster in PHP than increment.
+          ++$blob_count;
+        }
+        else {
+          // BLOB NULL is a bit different from normal case: we can't use
+          // StreamAPI, but bind NULL to target field direcly.
+          $stmt->bindParam(':db_update_placeholder_' . $max_placeholder++, $fields[$field], PDO::PARAM_LOB);
+        }
       }
       elseif ($fields[$field] === '') {
         $stmt->bindValue(':db_update_placeholder_' . $max_placeholder++, 'E#');
