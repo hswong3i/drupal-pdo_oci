@@ -453,16 +453,6 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     $this->driverOptions = $driver_options;
   }
 
-  public function bindValue($parameter, $value, $data_type = PDO::PARAM_STR) {
-    $value = $this->dbh->escapeForOracle($value);
-    return parent::bindValue($parameter, $value, $data_type);
-  }
-
-  public function bindParam($parameter, &$variable, $data_type = PDO::PARAM_STR, $length = 0, $driver_options = array()) {
-    $variable = $this->dbh->escapeForOracle($variable);
-    return parent::bindParam($parameter, $variable, $data_type, $length, $driver_options);
-  }
-
   public function execute($args = array(), $options = array()) {
     if (isset($options['fetch'])) {
       if (is_string($options['fetch'])) {

@@ -1,16 +1,37 @@
 diff --git includes/actions.inc includes/actions.inc
-index ed43af4..596eae8 100644
+index ed43af4..37b4431 100644
 --- includes/actions.inc
 +++ includes/actions.inc
-@@ -273,7 +273,7 @@ function actions_function_lookup($hash) {
+@@ -273,7 +273,10 @@ function actions_function_lookup($hash) {
   */
  function actions_synchronize($delete_orphans = FALSE) {
    $actions_in_code = actions_list(TRUE);
 -  $actions_in_db = db_query("SELECT aid, callback, label FROM {actions} WHERE parameters = ''")->fetchAllAssoc('callback', PDO::FETCH_ASSOC);
-+  $actions_in_db = db_query("SELECT aid, callback, label FROM {actions} WHERE LENGTH(parameters) = 0")->fetchAllAssoc('callback', PDO::FETCH_ASSOC);
++  $actions_in_db = db_select('actions')
++    ->fields('actions', array('aid', 'callback', 'label'))
++    ->where('LENGTH(parameters) = 0')
++    ->execute()->fetchAllAssoc('callback', PDO::FETCH_ASSOC);
  
    // Go through all the actions provided by modules.
    foreach ($actions_in_code as $callback => $array) {
+diff --git includes/session.inc includes/session.inc
+index 8f1bcaf..bd43415 100644
+--- includes/session.inc
++++ includes/session.inc
+@@ -111,7 +111,12 @@ function _drupal_session_read($sid) {
+     // Add roles element to $user.
+     $user->roles = array();
+     $user->roles[DRUPAL_AUTHENTICATED_RID] = 'authenticated user';
+-    $user->roles += db_query("SELECT r.rid, r.name FROM {role} r INNER JOIN {users_roles} ur ON ur.rid = r.rid WHERE ur.uid = :uid", array(':uid' => $user->uid))->fetchAllKeyed(0, 1);
++    $query = db_select('role', 'r');
++    $query->join('users_roles', 'ur', 'ur.rid = r.rid');
++    $query->addField('r', 'rid');
++    $query->addField('r', 'name');
++    $query->condition('ur.uid', $user->uid);
++    $user->roles += $query->execute()->fetchAllKeyed(0, 1);
+   }
+   elseif ($user) {
+     // The user is anonymous or blocked. Only preserve two fields from the
 diff --git modules/simpletest/tests/database_test.test modules/simpletest/tests/database_test.test
 index 6608336..28cb28f 100644
 --- modules/simpletest/tests/database_test.test

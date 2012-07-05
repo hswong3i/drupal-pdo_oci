@@ -112,7 +112,12 @@ class InsertQuery_oci extends InsertQuery {
         // the foreach statement assigns the element to the existing reference.
         $arguments = $this->fromQuery->getArguments();
         foreach ($arguments as $key => $value) {
-          $stmt->bindParam($key, $arguments[$key]);
+          if ($arguments[$key] === '') {
+            $stmt->bindValue($key, 'E#');
+          }
+          else {
+            $stmt->bindParam($key, $arguments[$key]);
+          }
         }
       }
 
@@ -285,7 +290,12 @@ class UpdateQuery_oci extends UpdateQuery {
           // We assume that an expression will never happen on a BLOB field,
           // which is a fairly safe assumption to make since in most cases
           // it would be an invalid query anyway.
-          $stmt->bindParam($placeholder, $data['arguments'][$placeholder]);
+          if ($data['arguments'][$placeholder] === '') {
+            $stmt->bindValue($placeholder, 'E#');
+          }
+          else {
+            $stmt->bindParam($placeholder, $data['arguments'][$placeholder]);
+          }
         }
       }
       unset($fields[$field]);
@@ -322,7 +332,12 @@ class UpdateQuery_oci extends UpdateQuery {
 
       $arguments = $this->condition->arguments();
       foreach ($arguments as $placeholder => $value) {
-        $stmt->bindParam($placeholder, $arguments[$placeholder]);
+        if ($arguments[$placeholder] === '') {
+          $stmt->bindValue($placeholder, 'E#');
+        }
+        else {
+          $stmt->bindParam($placeholder, $arguments[$placeholder]);
+        }
       }
     }
 
