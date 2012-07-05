@@ -33,9 +33,39 @@ index 8f1bcaf..bd43415 100644
    elseif ($user) {
      // The user is anonymous or blocked. Only preserve two fields from the
 diff --git modules/simpletest/tests/database_test.test modules/simpletest/tests/database_test.test
-index 6608336..28cb28f 100644
+index 6608336..cbdadc0 100644
 --- modules/simpletest/tests/database_test.test
 +++ modules/simpletest/tests/database_test.test
+@@ -2765,7 +2765,7 @@ class DatabaseRegressionTestCase extends DatabaseTestCase {
+    * Test the db_table_exists() function.
+    */
+   function testDBTableExists() {
+-    $this->assertIdentical(TRUE, db_table_exists('node'), t('Returns true for existent table.'));
++    $this->assertIdentical(TRUE, db_table_exists('test'), t('Returns true for existent table.'));
+     $this->assertIdentical(FALSE, db_table_exists('nosuchtable'), t('Returns false for nonexistent table.'));
+   }
+ 
+@@ -2773,16 +2773,16 @@ class DatabaseRegressionTestCase extends DatabaseTestCase {
+    * Test the db_field_exists() function.
+    */
+   function testDBFieldExists() {
+-    $this->assertIdentical(TRUE, db_field_exists('node', 'nid'), t('Returns true for existent column.'));
+-    $this->assertIdentical(FALSE, db_field_exists('node', 'nosuchcolumn'), t('Returns false for nonexistent column.'));
++    $this->assertIdentical(TRUE, db_field_exists('test', 'id'), t('Returns true for existent column.'));
++    $this->assertIdentical(FALSE, db_field_exists('test', 'nosuchcolumn'), t('Returns false for nonexistent column.'));
+   }
+ 
+   /**
+    * Test the db_index_exists() function.
+    */
+   function testDBIndexExists() {
+-    $this->assertIdentical(TRUE, db_index_exists('node', 'node_created'), t('Returns true for existent index.'));
+-    $this->assertIdentical(FALSE, db_index_exists('node', 'nosuchindex'), t('Returns false for nonexistent index.'));
++    $this->assertIdentical(TRUE, db_index_exists('test', 'ages'), t('Returns true for existent index.'));
++    $this->assertIdentical(FALSE, db_index_exists('test', 'nosuchindex'), t('Returns false for nonexistent index.'));
+   }
+ }
+ 
 @@ -3040,7 +3040,7 @@ class DatabaseBasicSyntaxTestCase extends DatabaseTestCase {
     * Test for string concatenation.
     */
