@@ -1,69 +1,38 @@
 diff --git ext/pdo_oci/oci_driver.c ext/pdo_oci/oci_driver.c
-index cb920ab..e43eeb4 100755
+index cb920ab..3e2040e 100755
 --- ext/pdo_oci/oci_driver.c
 +++ ext/pdo_oci/oci_driver.c
-@@ -201,7 +201,7 @@ static int oci_handle_closer(pdo_dbh_t *dbh TSRMLS_DC) /* {{{ */
-
-   if (H->svc) {
-     /* rollback any outstanding work */
--    OCITransRollback(H->svc, H->err, 0);
-+    OCISessionEnd(H->svc, H->err, H->session, 0);
-   }
-
-   if (H->session) {
-@@ -209,11 +209,6 @@ static int oci_handle_closer(pdo_dbh_t *dbh TSRMLS_DC) /* {{{ */
-     H->session = NULL;
-   }
-
--  if (H->svc) {
--    OCIHandleFree(H->svc, OCI_HTYPE_SVCCTX);
--    H->svc = NULL;
--  }
--
-   if (H->server && H->attached) {
-     H->last_err = OCIServerDetach(H->server, H->err, OCI_DEFAULT);
-     if (H->last_err) {
-@@ -222,13 +217,20 @@ static int oci_handle_closer(pdo_dbh_t *dbh TSRMLS_DC) /* {{{ */
-     H->attached = 0;
-   }
-
-+  if (H->svc) {
-+    OCIHandleFree(H->svc, OCI_HTYPE_SVCCTX);
-+    H->svc = NULL;
-+  }
-+
-   if (H->server) {
-     OCIHandleFree(H->server, OCI_HTYPE_SERVER);
-     H->server = NULL;
-   }
-
--  OCIHandleFree(H->err, OCI_HTYPE_ERROR);
--  H->err = NULL;
-+  if (H->err) {
-+    OCIHandleFree(H->err, OCI_HTYPE_ERROR);
-+    H->err = NULL;
-+  }
-
-   if (H->charset && H->env) {
-     OCIHandleFree(H->env, OCI_HTYPE_ENV);
+@@ -227,8 +227,10 @@ static int oci_handle_closer(pdo_dbh_t *dbh TSRMLS_DC) /* {{{ */
+ 		H->server = NULL;
+ 	}
+ 
+-	OCIHandleFree(H->err, OCI_HTYPE_ERROR);
+-	H->err = NULL;
++	if (H->err) {
++		OCIHandleFree(H->err, OCI_HTYPE_ERROR);
++		H->err = NULL;
++	}
+ 
+ 	if (H->charset && H->env) {
+ 		OCIHandleFree(H->env, OCI_HTYPE_ENV);
 diff --git ext/pdo_oci/oci_statement.c ext/pdo_oci/oci_statement.c
 index da35425..be51b6f 100755
 --- ext/pdo_oci/oci_statement.c
 +++ ext/pdo_oci/oci_statement.c
 @@ -99,7 +99,7 @@ static int oci_stmt_dtor(pdo_stmt_t *stmt TSRMLS_DC) /* {{{ */
-         switch (S->cols[i].dtype) {
-           case SQLT_BLOB:
-           case SQLT_CLOB:
--            /* do nothing */
-+            OCIDescriptorFree(S->cols[i].data, OCI_DTYPE_LOB);
-             break;
-           default:
-             efree(S->cols[i].data);
+ 				switch (S->cols[i].dtype) {
+ 					case SQLT_BLOB:
+ 					case SQLT_CLOB:
+-						/* do nothing */
++						OCIDescriptorFree(S->cols[i].data, OCI_DTYPE_LOB);
+ 						break;
+ 					default:
+ 						efree(S->cols[i].data);
 @@ -654,7 +654,6 @@ static int oci_blob_close(php_stream *stream, int close_handle TSRMLS_DC)
-
-   if (close_handle) {
-     OCILobClose(self->S->H->svc, self->S->err, self->lob);
--    OCIDescriptorFree(self->lob, OCI_DTYPE_LOB);
-     efree(self);
-   }
-
+ 
+ 	if (close_handle) {
+ 		OCILobClose(self->S->H->svc, self->S->err, self->lob);
+-		OCIDescriptorFree(self->lob, OCI_DTYPE_LOB);
+ 		efree(self);
+ 	}
+ 
