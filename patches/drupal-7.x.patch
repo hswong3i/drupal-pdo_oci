@@ -32,6 +32,52 @@ index 8f1bcaf..bd43415 100644
    }
    elseif ($user) {
      // The user is anonymous or blocked. Only preserve two fields from the
+diff --git modules/aggregator/aggregator.admin.inc modules/aggregator/aggregator.admin.inc
+index 9f92a67..7f34e3e 100644
+--- modules/aggregator/aggregator.admin.inc
++++ modules/aggregator/aggregator.admin.inc
+@@ -38,7 +38,7 @@ function aggregator_view() {
+   }
+   $output .= theme('table', array('header' => $header, 'rows' => $rows, 'empty' => t('No feeds available. <a href="@link">Add feed</a>.', array('@link' => url('admin/config/services/aggregator/add/feed')))));
+ 
+-  $result = db_query('SELECT c.cid, c.title, COUNT(ci.iid) as items FROM {aggregator_category} c LEFT JOIN {aggregator_category_item} ci ON c.cid = ci.cid GROUP BY c.cid, c.title ORDER BY title');
++  $result = db_query('SELECT c.cid, c.title, COUNT(ci.iid) AS items FROM {aggregator_category} c LEFT JOIN {aggregator_category_item} ci ON c.cid = ci.cid GROUP BY c.cid, c.title ORDER BY c.title');
+ 
+   $output .= '<h3>' . t('Category overview') . '</h3>';
+ 
+diff --git modules/node/node.module modules/node/node.module
+index 71ea3b9..3c05e7b 100644
+--- modules/node/node.module
++++ modules/node/node.module
+@@ -323,7 +323,11 @@ function node_last_viewed($nid) {
+   $history = &drupal_static(__FUNCTION__, array());
+ 
+   if (!isset($history[$nid])) {
+-    $history[$nid] = db_query("SELECT timestamp FROM {history} WHERE uid = :uid AND nid = :nid", array(':uid' => $user->uid, ':nid' => $nid))->fetchObject();
++    $history[$nid] = db_select('history', 'h')
++      ->fields('h', array('timestamp'))
++      ->condition('h.uid', $user->uid)
++      ->condition('h.nid', $nid)
++      ->execute()->fetchObject();
+   }
+ 
+   return (isset($history[$nid]->timestamp) ? $history[$nid]->timestamp : 0);
+diff --git modules/openid/openid.pages.inc modules/openid/openid.pages.inc
+index 6e3f096..99c0d08 100644
+--- modules/openid/openid.pages.inc
++++ modules/openid/openid.pages.inc
+@@ -47,7 +47,10 @@ function openid_user_identities($account) {
+   $header = array(t('OpenID'), t('Operations'));
+   $rows = array();
+ 
+-  $result = db_query("SELECT * FROM {authmap} WHERE module='openid' AND uid=:uid", array(':uid' => $account->uid));
++  $query = db_select('authmap', 'a');
++  $query->addExpression('a.module', 'openid');
++  $query->condition('a.uid', $account->uid);
++  $result = $query->execute();
+   foreach ($result as $identity) {
+     $rows[] = array(check_plain($identity->authname), l(t('Delete'), 'user/' . $account->uid . '/openid/delete/' . $identity->aid));
+   }
 diff --git modules/simpletest/tests/database_test.test modules/simpletest/tests/database_test.test
 index 6608336..cbdadc0 100644
 --- modules/simpletest/tests/database_test.test
@@ -87,3 +133,35 @@ index 8945117..c3fad57 100644
            'not null' => FALSE,
            'default' => NULL,
          ),
+diff --git modules/system/system.admin.inc modules/system/system.admin.inc
+index 23a975b..7d833f4 100644
+--- modules/system/system.admin.inc
++++ modules/system/system.admin.inc
+@@ -2948,7 +2948,10 @@ function system_actions_manage() {
+   }
+ 
+   $row = array();
+-  $instances_present = db_query("SELECT aid FROM {actions} WHERE parameters <> ''")->fetchField();
++  $query = db_select('actions', 'a');
++  $query->addField('a', 'aid');
++  $query->where('LENGTH(parameters) > 0');
++  $instances_present = $query->execute()->fetchField();
+   $header = array(
+     array('data' => t('Action type'), 'field' => 'type'),
+     array('data' => t('Label'), 'field' => 'label'),
+diff --git modules/user/user.admin.inc modules/user/user.admin.inc
+index 1cc2c4a..05083d4 100644
+--- modules/user/user.admin.inc
++++ modules/user/user.admin.inc
+@@ -200,7 +200,10 @@ function user_admin_account() {
+   $accounts = array();
+   foreach ($result as $account) {
+     $users_roles = array();
+-    $roles_result = db_query('SELECT rid FROM {users_roles} WHERE uid = :uid', array(':uid' => $account->uid));
++    $roles_result = db_select('users_roles', 'ur')
++      ->fields('ur', array('rid'))
++      ->condition('ur.uid', $account->uid)
++      ->execute();
+     foreach ($roles_result as $user_role) {
+       $users_roles[] = $roles[$user_role->rid];
+     }

@@ -82,6 +82,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
     return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($info['table'])))->fetchField();
   }
 
+  public function findTables($table_expression) {
+    // Don't use {} around user_tables table.
+    return $this->connection->query('SELECT LOWER(TABLE_NAME) FROM USER_TABLES WHERE TABLE_NAME LIKE :table_expression', array(':table_expression' => strtoupper($table_expression)))->fetchAllKeyed(0, 0);
+  }
+
   public function fieldExists($table, $column) {
     $info = $this->getPrefixInfo($table);
 
