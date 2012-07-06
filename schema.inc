@@ -77,9 +77,10 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
   public function tableExists($table) {
     $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
 
     // Don't use {} around user_tables table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($info['table'])))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)))->fetchField();
   }
 
   public function findTables($table_expression) {
@@ -89,17 +90,19 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
   public function fieldExists($table, $column) {
     $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
+    $column_name = $this->connection->escapeLongIdentifiers($column);
 
     // Don't use {} around user_tab_cols table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($column)))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($column_name)))->fetchField();
   }
 
   public function sequenceExists($sequence) {
     // Sequence generated may usually >30 characters so need escape.
-    $sequence = $this->connection->escapeForOracle($sequence);
+    $sequence_name = $this->connection->escapeLongIdentifiers($sequence);
 
     // Don't use {} around user_sequences table.
-    return (bool) $this->connection->query("SELECT 1 FROM USER_SEQUENCES WHERE SEQUENCE_NAME = :sequence_name", array(':sequence_name' => strtoupper($sequence)))->fetchField();
+    return (bool) $this->connection->query("SELECT 1 FROM USER_SEQUENCES WHERE SEQUENCE_NAME = :sequence_name", array(':sequence_name' => strtoupper($sequence_name)))->fetchField();
   }
 
   /**
@@ -453,9 +456,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
   public function indexExists($table, $name) {
     $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
+    $index_name = $this->connection->escapeLongIdentifiers($this->prefixNonTable($info['table'], $name, 'ix'));
 
     // Don't use {} around user_indexes table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE TABLE_NAME = :table_name AND INDEX_NAME = :index_name', array(':table_name' => strtoupper($info['table']), ':index_name' => strtoupper($this->prefixNonTable($info['table'], $name, 'ix'))))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE TABLE_NAME = :table_name AND INDEX_NAME = :index_name', array(':table_name' => strtoupper($table_name), ':index_name' => strtoupper($index_name)))->fetchField();
   }
 
   public function constraintExists($table) {
@@ -617,12 +622,15 @@ class DatabaseSchema_oci extends DatabaseSchema {
    */
   public function getComment($table, $column = NULL) {
     $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
+    $column_name = isset($column) ? $this->connection->escapeLongIdentifiers($column) : NULL;
+    
     // Don't use {} around user_col_comments, user_tab_comments tables.
-    if (isset($column)) {
-      return $this->connection->query('SELECT COMMENTS FROM USER_COL_COMMENTS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($column)))->fetchField();
+    if (isset($column_name)) {
+      return $this->connection->query('SELECT COMMENTS FROM USER_COL_COMMENTS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($column_name)))->fetchField();
     }
     else {
-      return $this->connection->query('SELECT COMMENTS FROM USER_TAB_COMMENTS WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($info['table'])))->fetchField();
+      return $this->connection->query('SELECT COMMENTS FROM USER_TAB_COMMENTS WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)))->fetchField();
     }
   }
 }
