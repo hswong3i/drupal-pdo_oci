@@ -21,7 +21,14 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
   private $reserved_words = '';
 
+  private $shorthand = array();
+
   public function __construct(array $connection_options = array()) {
+    global $conf;
+
+    include DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
+    $this->shorthand = array_flip(empty($conf['long_identifiers']) ? array() : $conf['long_identifiers']);
+
     // This driver defaults to transaction support, except if explicitly passed FALSE.
     $this->transactionSupport = !isset($connection_options['transactions']) || ($connection_options['transactions'] !== FALSE);
 
@@ -210,6 +217,48 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
     return $conf['long_identifiers'][$matches[0]];
   }
+
+  public function restoreEscaped($data) {
+    // Preserve with array handling.
+    if (is_array($data)) {
+      foreach ($data as $key => $value) {
+        // Column name is present as this->shorthand.
+        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
+          $data[$this->shorthand[$key]] = $this->restoreEscaped($value);
+          unset($data[$key]);
+        }
+        else {
+          $data[$key] = $this->restoreEscaped($value);
+        }
+      }
+    }
+    // Preserve with object handling.
+    elseif (is_object($data)) {
+      foreach ($data as $key => $value) {
+        // Column name is present as this->shorthand.
+        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
+          $data->{$this->shorthand[$key]} = $this->restoreEscaped($value);
+          unset($data->{$key});
+        }
+        else {
+          $data->{$key} = $this->restoreEscaped($value);
+        }
+      }
+    }
+    // Value stored as empty string placeholder.
+    elseif (is_string($data) && $data === 'E#') {
+      return '';
+    }
+    // LOBs greater than 4000 bytes are always stored externally.
+    // pdo_oci return bytea as stream, so we just need to use Streams API.
+    // Check http://bugs.php.net/bug.php?id=37124 for more information.
+    elseif (is_resource($data) && ($content = stream_get_contents($data)) !== FALSE) {
+      return $content;
+    }
+
+    return $data;
+  }
+
 
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
     return $this->query('SELECT * FROM (SELECT SUB1.*, ROWNUM AS LINE2 FROM (' . $query . ') SUB1) WHERE LINE2 BETWEEN ' . ($from + 1) . ' AND ' . ($from + $count), $args, $options);
@@ -440,14 +489,7 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
 
   public $queryString;
 
-  private $shorthand = array();
-
   public function __construct(DatabaseConnection $connection, $query, array $driver_options = array()) {
-    global $conf;
-
-    include DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
-    $this->shorthand = array_flip(empty($conf['long_identifiers']) ? array() : $conf['long_identifiers']);
-
     $this->dbh = $connection;
     $this->queryString = $query;
     $this->driverOptions = $driver_options;
@@ -518,94 +560,47 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
   }
 
   public function getStatement($query, &$args = array()) {
-    // Escape for array handling.
-    if (is_array($args)) {
-      foreach ($args as $key => $value) {
-        $args[$key] = $value === '' ? 'E#' : $value;
-      }
-    }
     return $this->dbh->PDOPrepare($this->queryString);
   }
 
-  private function restoreEscaped($data) {
-    // Preserve with array handling.
-    if (is_array($data)) {
-      foreach ($data as $key => $value) {
-        // Column name is present as this->shorthand.
-        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
-          $data[$this->shorthand[$key]] = $this->restoreEscaped($value);
-          unset($data[$key]);
-        }
-        else {
-          $data[$key] = $this->restoreEscaped($value);
-        }
-      }
-    }
-    // Preserve with object handling.
-    elseif (is_object($data)) {
-      foreach ($data as $key => $value) {
-        // Column name is present as this->shorthand.
-        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
-          $data->{$this->shorthand[$key]} = $this->restoreEscaped($value);
-          unset($data->{$key});
-        }
-        else {
-          $data->{$key} = $this->restoreEscaped($value);
-        }
-      }
-    }
-    // Value stored as empty string placeholder.
-    elseif (is_string($data) && $data === 'E#') {
-      return '';
-    }
-    // LOBs greater than 4000 bytes are always stored externally.
-    // pdo_oci return bytea as stream, so we just need to use Streams API.
-    // Check http://bugs.php.net/bug.php?id=37124 for more information.
-    elseif (is_resource($data) && ($content = stream_get_contents($data)) !== FALSE) {
-      return $content;
-    }
-
-    return $data;
-  }
-
   public function current() {
-    return $this->restoreEscaped(parent::current());
+    return $this->dbh->restoreEscaped(parent::current());
   }
 
   public function next() {
-    return $this->restoreEscaped(parent::next());
+    return $this->dbh->restoreEscaped(parent::next());
   }
 
   public function fetch($fetch_style = NULL, $cursor_orientation = PDO::FETCH_ORI_NEXT, $cursor_offset = 0) {
-    return $this->restoreEscaped(parent::fetch($fetch_style, $cursor_orientation, $cursor_offset));
+    return $this->dbh->restoreEscaped(parent::fetch($fetch_style, $cursor_orientation, $cursor_offset));
   }
 
   public function fetchField($index = 0) {
-    return $this->restoreEscaped(parent::fetchField($index));
+    return $this->dbh->restoreEscaped(parent::fetchField($index));
   }
 
   public function fetchObject($class_name = NULL, $ctor_args = array()) {
-    return $this->restoreEscaped(parent::fetchObject($class_name, $ctor_args));
+    return $this->dbh->restoreEscaped(parent::fetchObject($class_name, $ctor_args));
   }
 
   public function fetchAssoc() {
-    return $this->restoreEscaped(parent::fetchAssoc());
+    return $this->dbh->restoreEscaped(parent::fetchAssoc());
   }
 
   public function fetchAll($fetch_style = NULL, $fetch_argument = NULL, $ctor_args = array()) {
-    return $this->restoreEscaped(parent::fetchAll($fetch_style, $fetch_argument, $ctor_args));
+    return $this->dbh->restoreEscaped(parent::fetchAll($fetch_style, $fetch_argument, $ctor_args));
   }
 
   public function fetchCol($index = 0) {
-    return $this->restoreEscaped(parent::fetchCol($index));
+    return $this->dbh->restoreEscaped(parent::fetchCol($index));
   }
 
   public function fetchAllKeyed($key_index = 0, $value_index = 1) {
-    return $this->restoreEscaped(parent::fetchAllKeyed($key_index, $value_index));
+    return $this->dbh->restoreEscaped(parent::fetchAllKeyed($key_index, $value_index));
   }
 
   public function fetchAllAssoc($key, $fetch = NULL) {
-    return $this->restoreEscaped(parent::fetchAllAssoc($key, $fetch));
+    return $this->dbh->restoreEscaped(parent::fetchAllAssoc($key, $fetch));
   }
 }
 

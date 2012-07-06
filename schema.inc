@@ -624,7 +624,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $info = $this->getPrefixInfo($table);
     $table_name = $this->connection->escapeLongIdentifiers($info['table']);
     $column_name = isset($column) ? $this->connection->escapeLongIdentifiers($column) : NULL;
-    
+
     // Don't use {} around user_col_comments, user_tab_comments tables.
     if (isset($column_name)) {
       return $this->connection->query('SELECT COMMENTS FROM USER_COL_COMMENTS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($column_name)))->fetchField();
