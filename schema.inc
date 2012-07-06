@@ -77,7 +77,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
   public function tableExists($table) {
     $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
+    $table_name = $this->connection->escapeForOracle($info['table']);
 
     // Don't use {} around user_tables table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)))->fetchField();
@@ -90,8 +90,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
   public function fieldExists($table, $column) {
     $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
-    $column_name = $this->connection->escapeLongIdentifiers($column);
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $column_name = $this->connection->escapeForOracle($column);
 
     // Don't use {} around user_tab_cols table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($column_name)))->fetchField();
@@ -99,7 +99,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
   public function sequenceExists($sequence) {
     // Sequence generated may usually >30 characters so need escape.
-    $sequence_name = $this->connection->escapeLongIdentifiers($sequence);
+    $sequence_name = $this->connection->escapeForOracle($sequence);
 
     // Don't use {} around user_sequences table.
     return (bool) $this->connection->query("SELECT 1 FROM USER_SEQUENCES WHERE SEQUENCE_NAME = :sequence_name", array(':sequence_name' => strtoupper($sequence_name)))->fetchField();
@@ -456,8 +456,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
   public function indexExists($table, $name) {
     $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
-    $index_name = $this->connection->escapeLongIdentifiers($this->prefixNonTable($info['table'], $name, 'ix'));
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $index_name = $this->connection->escapeForOracle($this->prefixNonTable($info['table'], $name, 'ix'));
 
     // Don't use {} around user_indexes table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE TABLE_NAME = :table_name AND INDEX_NAME = :index_name', array(':table_name' => strtoupper($table_name), ':index_name' => strtoupper($index_name)))->fetchField();
@@ -593,6 +593,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $query = 'CREATE OR REPLACE TRIGGER ' . $this->prefixNonTable($table, $field, 'trg') . ' ';
     $query .= 'BEFORE INSERT ON {' . $table . '} ';
     $query .= 'FOR EACH ROW ';
+    $query .= 'WHEN (NEW.' . $field . ' IS NULL) ';
     $query .= 'BEGIN ';
     $query .= 'SELECT ' . $this->connection->makeSequenceName($table, $field) . '.NEXTVAL ';
     $query .= 'INTO :NEW.' . $field . ' ';
@@ -622,8 +623,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
    */
   public function getComment($table, $column = NULL) {
     $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeLongIdentifiers($info['table']);
-    $column_name = isset($column) ? $this->connection->escapeLongIdentifiers($column) : NULL;
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $column_name = isset($column) ? $this->connection->escapeForOracle($column) : NULL;
 
     // Don't use {} around user_col_comments, user_tab_comments tables.
     if (isset($column_name)) {

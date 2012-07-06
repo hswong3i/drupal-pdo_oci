@@ -19,23 +19,12 @@ include_once DRUPAL_ROOT . '/includes/database/prefetch.inc';
  */
 class DatabaseConnection_oci extends DatabaseConnection {
 
-  private $reserved_words = '';
-
-  private $shorthand = array();
-
   public function __construct(array $connection_options = array()) {
-    global $conf;
-
-    include DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
-    $this->shorthand = array_flip(empty($conf['long_identifiers']) ? array() : $conf['long_identifiers']);
-
     // This driver defaults to transaction support, except if explicitly passed FALSE.
     $this->transactionSupport = !isset($connection_options['transactions']) || ($connection_options['transactions'] !== FALSE);
 
     // Transactional DDL is not available in Oracle.
     $this->transactionalDDLSupport = FALSE;
-
-    $this->reserved_words = implode('|', $this->getReservedWords());
 
     $this->connectionOptions = $connection_options;
 
@@ -161,10 +150,16 @@ class DatabaseConnection_oci extends DatabaseConnection {
   }
 
   public function escapeReservedWords($query) {
+    static $reserved_words = NULL;
+
+    if ($reserved_words === NULL) {
+      $reserved_words = implode('|', $this->getReservedWords());
+    }
+
     $pattern = array(
-      '/^(' . $this->reserved_words . ')$/',
-      '/:(' . $this->reserved_words . ')([\)\.\s\=\,])/',
-      '/([\(\.\s\=\,])(' . $this->reserved_words . ')([\)\.\s\=\,])/',
+      '/^(' . $reserved_words . ')$/',
+      '/:(' . $reserved_words . ')([\)\.\s\=\,])/',
+      '/([\(\.\s\=\,])(' . $reserved_words . ')([\)\.\s\=\,])/',
     );
     $replacement = array(
       '"$1"',
@@ -197,14 +192,14 @@ class DatabaseConnection_oci extends DatabaseConnection {
   public function escapeLongIdentifier($matches) {
     global $conf;
 
-    $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
-    include $settings_file;
-
     // Do we have the mapping?
     if (!isset($conf['long_identifiers'][$matches[0]])) {
       // Generate the mapping with prefix.
       $shorthand = 'L#' . crc32($matches[0]);
       $conf['long_identifiers'][$matches[0]] = $shorthand;
+
+      // Prepare for save.
+      $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
       $content = "\$conf['long_identifiers']['$matches[0]'] = '$shorthand';\n";
 
       // Save the long identifiers mapping to settings.php.
@@ -218,42 +213,54 @@ class DatabaseConnection_oci extends DatabaseConnection {
     return $conf['long_identifiers'][$matches[0]];
   }
 
-  public function restoreEscaped($data) {
+  public function restoreForOracle($data) {
+    global $conf;
+
+    // Always update $shorthand from $conf for latest version.
+    $shorthand = array_flip(empty($conf['long_identifiers']) ? array() : $conf['long_identifiers']);
+
     // Preserve with array handling.
     if (is_array($data)) {
       foreach ($data as $key => $value) {
-        // Column name is present as this->shorthand.
-        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
-          $data[$this->shorthand[$key]] = $this->restoreEscaped($value);
+        // Column name is present as shorthand.
+        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
+          $data[$shorthand[$key]] = $this->restoreForOracle($value);
           unset($data[$key]);
         }
         else {
-          $data[$key] = $this->restoreEscaped($value);
+          $data[$key] = $this->restoreForOracle($value);
         }
       }
     }
     // Preserve with object handling.
     elseif (is_object($data)) {
       foreach ($data as $key => $value) {
-        // Column name is present as this->shorthand.
-        if (strpos($key, 'L#') === 0 && isset($this->shorthand[$key])) {
-          $data->{$this->shorthand[$key]} = $this->restoreEscaped($value);
+        // Column name is present as shorthand.
+        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
+          $data->{$shorthand[$key]} = $this->restoreForOracle($value);
           unset($data->{$key});
         }
         else {
-          $data->{$key} = $this->restoreEscaped($value);
+          $data->{$key} = $this->restoreForOracle($value);
         }
       }
     }
-    // Value stored as empty string placeholder.
-    elseif (is_string($data) && $data === 'E#') {
-      return '';
+    // Restore string value.
+    elseif (is_string($data)) {
+      if ($data === 'E#') {
+        return '';
+      }
+      elseif (strpos($data, 'L#') === 0 && isset($shorthand[$data])) {
+        return $shorthand[$data];
+      }
     }
     // LOBs greater than 4000 bytes are always stored externally.
     // pdo_oci return bytea as stream, so we just need to use Streams API.
     // Check http://bugs.php.net/bug.php?id=37124 for more information.
-    elseif (is_resource($data) && ($content = stream_get_contents($data)) !== FALSE) {
-      return $content;
+    elseif (is_resource($data)) {
+      if ($content = stream_get_contents($data) !== FALSE) {
+        return $content;
+      }
     }
 
     return $data;
@@ -519,6 +526,13 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
       $this->throwPDOException();
     }
 
+    // Escape all empty string input.
+    if (is_array($args)) {
+      foreach ($args as $key => $value) {
+        $args[$key] = $value === '' ? 'E#' : $value;
+      }
+    }
+
     $return = $statement->execute($args);
     if (!$return) {
       $this->throwPDOException();
@@ -564,43 +578,43 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
   }
 
   public function current() {
-    return $this->dbh->restoreEscaped(parent::current());
+    return $this->dbh->restoreForOracle(parent::current());
   }
 
   public function next() {
-    return $this->dbh->restoreEscaped(parent::next());
+    return $this->dbh->restoreForOracle(parent::next());
   }
 
   public function fetch($fetch_style = NULL, $cursor_orientation = PDO::FETCH_ORI_NEXT, $cursor_offset = 0) {
-    return $this->dbh->restoreEscaped(parent::fetch($fetch_style, $cursor_orientation, $cursor_offset));
+    return $this->dbh->restoreForOracle(parent::fetch($fetch_style, $cursor_orientation, $cursor_offset));
   }
 
   public function fetchField($index = 0) {
-    return $this->dbh->restoreEscaped(parent::fetchField($index));
+    return $this->dbh->restoreForOracle(parent::fetchField($index));
   }
 
   public function fetchObject($class_name = NULL, $ctor_args = array()) {
-    return $this->dbh->restoreEscaped(parent::fetchObject($class_name, $ctor_args));
+    return $this->dbh->restoreForOracle(parent::fetchObject($class_name, $ctor_args));
   }
 
   public function fetchAssoc() {
-    return $this->dbh->restoreEscaped(parent::fetchAssoc());
+    return $this->dbh->restoreForOracle(parent::fetchAssoc());
   }
 
   public function fetchAll($fetch_style = NULL, $fetch_argument = NULL, $ctor_args = array()) {
-    return $this->dbh->restoreEscaped(parent::fetchAll($fetch_style, $fetch_argument, $ctor_args));
+    return $this->dbh->restoreForOracle(parent::fetchAll($fetch_style, $fetch_argument, $ctor_args));
   }
 
   public function fetchCol($index = 0) {
-    return $this->dbh->restoreEscaped(parent::fetchCol($index));
+    return $this->dbh->restoreForOracle(parent::fetchCol($index));
   }
 
   public function fetchAllKeyed($key_index = 0, $value_index = 1) {
-    return $this->dbh->restoreEscaped(parent::fetchAllKeyed($key_index, $value_index));
+    return $this->dbh->restoreForOracle(parent::fetchAllKeyed($key_index, $value_index));
   }
 
   public function fetchAllAssoc($key, $fetch = NULL) {
-    return $this->dbh->restoreEscaped(parent::fetchAllAssoc($key, $fetch));
+    return $this->dbh->restoreForOracle(parent::fetchAllAssoc($key, $fetch));
   }
 }
 
