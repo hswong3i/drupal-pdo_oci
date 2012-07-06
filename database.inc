@@ -8,6 +8,36 @@
 require_once dirname(__FILE__) . '/tests/devel.inc';
 
 /**
+ * Empty string placeholder for Oracle.
+ */
+define('OCI_EMPTY_STRING_PLACEHOLDER', 'E#');
+
+/**
+ * Long identifier prefix for Oracle.
+ */
+define('OCI_LONG_IDENTIFIER_PREFIX', 'L#');
+
+/**
+ * Identifier max length limitation for Oracle.
+ */
+define('OCI_MAX_IDENTIFIER_LENGTH', 30);
+
+/**
+ * NVARCHAR2 max length limitation for Oracle.
+ */
+define('OCI_MAX_NVARCHAR2_LENGTH', 2000);
+
+/**
+ * NCHAR max length limitation for Oracle.
+ */
+define('OCI_MAX_NCHAR_LENGTH', 1000);
+
+/**
+ * NUMBER max length limitation for Oracle.
+ */
+define('OCI_MAX_NUMBER_LENGTH', 38);
+
+/**
  * @ingroup database
  * @{
  */
@@ -107,7 +137,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
-      dprint_r(array_filter(array($stmt->queryString, $args)));
       dprint_r($e->errorInfo);
       ddebug_backtrace();
       if ($options['throw_exception']) {
@@ -175,16 +204,16 @@ class DatabaseConnection_oci extends DatabaseConnection {
       "''",
     );
     $replace = array(
-      "E#",
-      "'E#'",
+      OCI_EMPTY_STRING_PLACEHOLDER,
+      "'" . OCI_EMPTY_STRING_PLACEHOLDER . "'",
     );
     return str_replace($search, $replace, $query);
   }
 
   public function escapeLongIdentifiers($query) {
     $pattern = array(
-      '/[a-z0-9_]{31,}/',
-      '/^[a-z0-9_]{31,}$/',
+      '/[a-z0-9_]{' . (OCI_MAX_IDENTIFIER_LENGTH + 1) . ',}/',
+      '/^[a-z0-9_]{' . (OCI_MAX_IDENTIFIER_LENGTH + 1) . ',}$/',
     );
     return preg_replace_callback($pattern, array($this, 'escapeLongIdentifier'), $query);
   }
@@ -195,7 +224,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     // Do we have the mapping?
     if (!isset($conf['long_identifiers'][$matches[0]])) {
       // Generate the mapping with prefix.
-      $shorthand = 'L#' . crc32($matches[0]);
+      $shorthand = OCI_LONG_IDENTIFIER_PREFIX . crc32($matches[0]);
       $conf['long_identifiers'][$matches[0]] = $shorthand;
 
       // Prepare for save.
@@ -223,7 +252,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     if (is_array($data)) {
       foreach ($data as $key => $value) {
         // Column name is present as shorthand.
-        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
+        if (strpos($key, OCI_LONG_IDENTIFIER_PREFIX) === 0 && isset($shorthand[$key])) {
           $data[$shorthand[$key]] = $this->restoreForOracle($value);
           unset($data[$key]);
         }
@@ -236,7 +265,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     elseif (is_object($data)) {
       foreach ($data as $key => $value) {
         // Column name is present as shorthand.
-        if (strpos($key, 'L#') === 0 && isset($shorthand[$key])) {
+        if (strpos($key, OCI_LONG_IDENTIFIER_PREFIX) === 0 && isset($shorthand[$key])) {
           $data->{$shorthand[$key]} = $this->restoreForOracle($value);
           unset($data->{$key});
         }
@@ -247,10 +276,10 @@ class DatabaseConnection_oci extends DatabaseConnection {
     }
     // Restore string value.
     elseif (is_string($data)) {
-      if ($data === 'E#') {
+      if ($data === OCI_EMPTY_STRING_PLACEHOLDER) {
         return '';
       }
-      elseif (strpos($data, 'L#') === 0 && isset($shorthand[$data])) {
+      elseif (strpos($data, OCI_LONG_IDENTIFIER_PREFIX) === 0 && isset($shorthand[$data])) {
         return $shorthand[$data];
       }
     }
@@ -494,8 +523,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
 class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterator, DatabaseStatementInterface {
 
-  public $queryString;
-
   public function __construct(DatabaseConnection $connection, $query, array $driver_options = array()) {
     $this->dbh = $connection;
     $this->queryString = $query;
@@ -529,7 +556,7 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     // Escape all empty string input.
     if (is_array($args)) {
       foreach ($args as $key => $value) {
-        $args[$key] = $value === '' ? 'E#' : $value;
+        $args[$key] = $value === '' ? OCI_EMPTY_STRING_PLACEHOLDER : $value;
       }
     }
 

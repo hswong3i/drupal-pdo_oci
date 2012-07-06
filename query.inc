@@ -69,7 +69,7 @@ class InsertQuery_oci extends InsertQuery {
             }
           }
           elseif ($insert_values[$idx] === '') {
-            $stmt->bindValue(':db_insert_placeholder_' . $max_placeholder++, 'E#');
+            $stmt->bindValue(':db_insert_placeholder_' . $max_placeholder++, OCI_EMPTY_STRING_PLACEHOLDER);
           }
           else {
             $stmt->bindParam(':db_insert_placeholder_' . $max_placeholder++, $insert_values[$idx]);
@@ -113,7 +113,7 @@ class InsertQuery_oci extends InsertQuery {
         $arguments = $this->fromQuery->getArguments();
         foreach ($arguments as $key => $value) {
           if ($arguments[$key] === '') {
-            $stmt->bindValue($key, 'E#');
+            $stmt->bindValue($key, OCI_EMPTY_STRING_PLACEHOLDER);
           }
           else {
             $stmt->bindParam($key, $arguments[$key]);
@@ -291,7 +291,7 @@ class UpdateQuery_oci extends UpdateQuery {
           // which is a fairly safe assumption to make since in most cases
           // it would be an invalid query anyway.
           if ($data['arguments'][$placeholder] === '') {
-            $stmt->bindValue($placeholder, 'E#');
+            $stmt->bindValue($placeholder, OCI_EMPTY_STRING_PLACEHOLDER);
           }
           else {
             $stmt->bindParam($placeholder, $data['arguments'][$placeholder]);
@@ -320,7 +320,7 @@ class UpdateQuery_oci extends UpdateQuery {
         }
       }
       elseif ($fields[$field] === '') {
-        $stmt->bindValue(':db_update_placeholder_' . $max_placeholder++, 'E#');
+        $stmt->bindValue(':db_update_placeholder_' . $max_placeholder++, OCI_EMPTY_STRING_PLACEHOLDER);
       }
       else {
         $stmt->bindParam(':db_update_placeholder_' . $max_placeholder++, $fields[$field]);
@@ -333,7 +333,7 @@ class UpdateQuery_oci extends UpdateQuery {
       $arguments = $this->condition->arguments();
       foreach ($arguments as $placeholder => $value) {
         if ($arguments[$placeholder] === '') {
-          $stmt->bindValue($placeholder, 'E#');
+          $stmt->bindValue($placeholder, OCI_EMPTY_STRING_PLACEHOLDER);
         }
         else {
           $stmt->bindParam($placeholder, $arguments[$placeholder]);

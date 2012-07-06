@@ -194,13 +194,13 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $sql .= '(' . min($spec['precision'], 38) . ', ' . $spec['scale'] . ')';
     }
     elseif ($spec['oci_type'] == 'NVARCHAR2') {
-      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], 2000) : 2000) . ')';
+      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], OCI_MAX_NVARCHAR2_LENGTH) : OCI_MAX_NVARCHAR2_LENGTH) . ')';
     }
     elseif ($spec['oci_type'] == 'NCHAR') {
-      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], 1000) : 1000) . ')';
+      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], OCI_MAX_NCHAR_LENGTH) : OCI_MAX_NCHAR_LENGTH) . ')';
     }
     elseif ($spec['oci_type'] == 'NUMBER') {
-      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], 38) : 38) . ')';
+      $sql .= '(' . (isset($spec['length']) ? min($spec['length'], OCI_MAX_NUMBER_LENGTH) : OCI_MAX_NUMBER_LENGTH) . ')';
     }
 
     // Oracle require DEFAULT before NULL.
@@ -386,10 +386,6 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $this->connection->query($query);
 
     if (isset($spec['initial'])) {
-      // TODO: Once $this->connection->update() get ready.
-      // $this->connection->update($table)
-      //   ->fields(array($field => $spec['initial']))
-      //   ->execute();
       $this->connection->query('UPDATE {' . $table . '} SET ' . $field . ' = :initial_value', array(':initial_value' => $spec['initial']));
     }
 
