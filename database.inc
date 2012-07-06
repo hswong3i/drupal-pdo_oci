@@ -139,6 +139,16 @@ class DatabaseConnection_oci extends DatabaseConnection {
     catch (PDOException $e) {
       dprint_r($e->errorInfo);
       ddebug_backtrace();
+
+      // Long identifier replacement is expensive especially if execute
+      // for all queries. Therefore just preform during exception be thrown.
+      if (isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '00972' && !isset($options['ORA-00972'])) {
+        $options['ORA-00972'] = TRUE;
+        $retry_query = $query instanceof DatabaseStatementInterface ? $stmt->queryString : $query;
+        $retry_query = $this->escapeLongIdentifiers($retry_query);
+        return $this->query($retry_query, $args, $options);
+      }
+
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -166,8 +176,11 @@ class DatabaseConnection_oci extends DatabaseConnection {
   }
 
   public function prepareQuery($query) {
+    // Only preform long identifier replacement when throw exception for
+    // performance concern.
     $query = $this->prefixTables($query);
-    $query = $this->escapeForOracle($query);
+    $query = $this->escapeReservedWords($query);
+    $query = $this->escapeEmptyString($query);
     return $this->prepare($query);
   }
 
@@ -522,6 +535,8 @@ class DatabaseConnection_oci extends DatabaseConnection {
 }
 
 class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterator, DatabaseStatementInterface {
+
+  public $queryString;
 
   public function __construct(DatabaseConnection $connection, $query, array $driver_options = array()) {
     $this->dbh = $connection;
