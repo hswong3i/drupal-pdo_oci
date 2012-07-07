@@ -150,16 +150,23 @@ class InsertQuery_oci extends InsertQuery {
     // Create a sanitized comment string to prepend to the query.
     $comments = $this->connection->makeComment($this->comments);
 
+    // Prefix and escape table name manually.
+    $table_name = $this->connection->prefixTables('{' . $this->table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
+
     // Default fields are always placed first for consistency.
     $insert_fields = array_merge($this->defaultFields, $this->insertFields);
+    foreach ($insert_fields as $key => $value) {
+      $insert_fields[$key] = $this->connection->escapeForOracle($value);
+    }
 
     // If we're selecting from a SelectQuery, finish building the query and
     // pass it back, as any remaining options are irrelevant.
     if (!empty($this->fromQuery)) {
-      return $comments . 'INSERT INTO {' . $this->connection->escapeTable($this->table) . '} (' . implode(', ', $this->connection->escapeField($insert_fields)) . ') ' . $this->fromQuery;
+      return $comments . 'INSERT INTO ' . $table_name . ' (' . implode(', ', $insert_fields) . ') ' . $this->fromQuery;
     }
 
-    $query = $comments . 'INSERT INTO {' . $this->connection->escapeTable($this->table) . '} (' . implode(', ', $this->connection->escapeField($insert_fields)) . ') VALUES ';
+    $query = $comments . 'INSERT INTO ' . $table_name . ' (' . implode(', ', $insert_fields) . ') VALUES ';
 
     $blob_fields = array();
     $blob_placeholders = array();
@@ -176,7 +183,7 @@ class InsertQuery_oci extends InsertQuery {
           // BLOB field insert in Oracle required additional handling with
           // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
           $placeholders[] = 'EMPTY_BLOB()';
-          $blob_fields[] = $this->connection->escapeField($field);
+          $blob_fields[] = $this->connection->escapeForOracle($field);
           $blob_placeholders[] = ':db_insert_placeholder_' . $i;
         }
         else {
@@ -207,7 +214,7 @@ class TruncateQuery_oci extends TruncateQuery {
     // Create a sanitized comment string to prepend to the query.
     $comments = $this->connection->makeComment($this->comments);
 
-    return $comments . 'TRUNCATE TABLE {' . $this->connection->escapeTable($this->table) . '} ';
+    return $comments . 'TRUNCATE TABLE {' . $this->table . '} ';
   }
 }
 
@@ -355,12 +362,16 @@ class UpdateQuery_oci extends UpdateQuery {
     // Create a sanitized comment string to prepend to the query.
     $comments = $this->connection->makeComment($this->comments);
 
+    // Prefix and escape table name manually.
+    $table_name = $this->connection->prefixTables('{' . $this->table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
+
     // Expressions take priority over literal fields, so we process those first
     // and remove any literal fields that conflict.
     $fields = $this->fields;
     $update_fields = array();
     foreach ($this->expressionFields as $field => $data) {
-      $update_fields[] = $this->connection->escapeField($field) . ' = ' . $data['expression'];
+      $update_fields[] = $this->connection->escapeForOracle($field) . ' = ' . $data['expression'];
       unset($fields[$field]);
     }
 
@@ -371,16 +382,16 @@ class UpdateQuery_oci extends UpdateQuery {
       if (isset($table_information->blob_fields[$field])) {
         // BLOB field update in Oracle required additional handling with
         // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
-        $update_fields[] = $this->connection->escapeField($field) . ' = EMPTY_BLOB()';
-        $blob_fields[] = $this->connection->escapeField($field);
+        $update_fields[] = $this->connection->escapeForOracle($field) . ' = EMPTY_BLOB()';
+        $blob_fields[] = $this->connection->escapeForOracle($field);
         $blob_placeholders[] = ':db_update_placeholder_' . $max_placeholder++;
       }
       else {
-        $update_fields[] = $this->connection->escapeField($field) . ' = :db_update_placeholder_' . $max_placeholder++;
+        $update_fields[] = $this->connection->escapeForOracle($field) . ' = :db_update_placeholder_' . $max_placeholder++;
       }
     }
 
-    $query = $comments . 'UPDATE {' . $this->connection->escapeTable($this->table) . '} SET ' . implode(', ', $update_fields);
+    $query = $comments . 'UPDATE ' . $table_name . ' SET ' . implode(', ', $update_fields);
 
     if (count($this->condition)) {
       $this->condition->compile($this->connection, $this);

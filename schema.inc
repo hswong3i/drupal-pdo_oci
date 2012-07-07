@@ -52,23 +52,23 @@ class DatabaseSchema_oci extends DatabaseSchema {
         'indexes' => array(),
       );
       // Don't use {} around user_tab_cols table.
-      $result = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND DATA_TYPE = 'BLOB'", array(':table_name' => strtoupper($table_name)));
+      $result = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND DATA_TYPE = 'BLOB'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
       foreach ($result as $column) {
-        $table_information->blob_fields[strtolower($column->column_name)] = TRUE;
+        $table_information->blob_fields[strtolower($this->connection->restoreForOracle($column->column_name))] = TRUE;
       }
       // Don't use {} around user_constraints and user_cons_columns table.
-      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($table_name)));
+      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
       foreach ($result as $column) {
-        $sequence = $this->connection->makeSequenceName(strtolower($column->table_name), strtolower($column->column_name));
+        $sequence = $this->connection->makeSequenceName(strtolower($this->connection->restoreForOracle($column->table_name)), strtolower($this->connection->restoreForOracle($column->column_name)));
         if ($this->sequenceExists($sequence)) {
           $table_information->sequences[] = $sequence;
-          $table_information->serial_fields[] = strtolower($column->column_name);
+          $table_information->serial_fields[] = strtolower($this->connection->restoreForOracle($column->column_name));
         }
       }
       // Don't use {} around user_indexes table.
-      $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => strtoupper($table_name)));
+      $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
       foreach ($result as $column) {
-        $table_information->indexes[strtolower($column->index_name)] = TRUE;
+        $table_information->indexes[strtolower($this->connection->restoreForOracle($column->index_name))] = TRUE;
       }
       $this->tableInformation[$key] = $table_information;
     }
@@ -191,7 +191,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // With poor Oracle we have a lots of limitation.
     if (isset($spec['precision']) && isset($spec['scale'])) {
-      $sql .= '(' . min($spec['precision'], 38) . ', ' . $spec['scale'] . ')';
+      $sql .= '(' . min($spec['precision'], OCI_MAX_NUMBER_LENGTH) . ', ' . $spec['scale'] . ')';
     }
     elseif ($spec['oci_type'] == 'NVARCHAR2') {
       $sql .= '(' . (isset($spec['length']) ? min($spec['length'], OCI_MAX_NVARCHAR2_LENGTH) : OCI_MAX_NVARCHAR2_LENGTH) . ')';
