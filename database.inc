@@ -137,15 +137,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
-      // Long identifier replacement is expensive especially if execute
-      // for all queries. Therefore just preform during exception be thrown.
-      if (isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '00972' && !isset($options['ORA-00972'])) {
-        $options['ORA-00972'] = TRUE;
-        $retry_query = $query instanceof DatabaseStatementInterface ? $stmt->queryString : $query;
-        $retry_query = $this->escapeLongIdentifiers($retry_query);
-        return $this->query($retry_query, $args, $options);
-      }
-
       dprint_r($e->errorInfo);
       ddebug_backtrace();
 
@@ -575,9 +566,21 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
       }
     }
 
-    $return = $statement->execute($args);
-    if (!$return) {
-      $this->throwPDOException();
+    $return = FALSE;
+    try {
+      $return = $statement->execute($args);
+      if (!$return) {
+        $this->throwPDOException();
+      }
+    }
+    catch (PDOException $e) {
+      // Long identifier replacement is expensive especially if execute
+      // for all queries. Therefore just preform during exception be thrown.
+      if (isset($e->errorInfo) && is_array($e->errorInfo) && $e->errorInfo[1] == '00972' && !isset($options['ORA-00972'])) {
+        $options['ORA-00972'] = TRUE;
+        $this->queryString = $this->dbh->escapeLongIdentifiers($this->queryString);
+        return $this->execute($args, $options);
+      }
     }
 
     try {
