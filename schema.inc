@@ -59,7 +59,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       // Don't use {} around user_constraints and user_cons_columns table.
       $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
       foreach ($result as $column) {
-        $sequence = $this->connection->makeSequenceName(strtolower($this->connection->restoreForOracle($column->table_name)), strtolower($this->connection->restoreForOracle($column->column_name)));
+        $sequence = $this->connection->makeSequenceName(strtolower($this->connection->restoreForOracle($table)), strtolower($this->connection->restoreForOracle($column->column_name)));
         if ($this->sequenceExists($sequence)) {
           $table_information->sequences[] = $sequence;
           $table_information->serial_fields[] = strtolower($this->connection->restoreForOracle($column->column_name));
@@ -375,22 +375,26 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot add field %table.%field: field already exists.", array('%field' => $field, '%table' => $table)));
     }
 
+    $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $field_name = $this->connection->escapeForOracle($field);
+
     $fixnull = FALSE;
     if (!empty($spec['not null']) && !isset($spec['default'])) {
       $fixnull = TRUE;
       $spec['not null'] = FALSE;
     }
 
-    $query = 'ALTER TABLE {' . $table . '} ADD ';
+    $query = 'ALTER TABLE ' . $table_name . ' ADD ';
     $query .= $this->createFieldSql($field, $this->processField($spec));
     $this->connection->query($query);
 
     if (isset($spec['initial'])) {
-      $this->connection->query('UPDATE {' . $table . '} SET ' . $field . ' = :initial_value', array(':initial_value' => $spec['initial']));
+      $this->connection->query('UPDATE ' . $table_name . ' SET ' . $field_name . ' = :initial_value', array(':initial_value' => $spec['initial']));
     }
 
     if ($fixnull) {
-      $this->connection->query('ALTER TABLE {' . $table . '} MODIFY (' . $field . ' NOT NULL)');
+      $this->connection->query('ALTER TABLE ' . $table_name . ' MODIFY (' . $field_name . ' NOT NULL)');
     }
 
     if (isset($new_keys)) {
@@ -405,7 +409,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add column comment.
     if (!empty($spec['description'])) {
-      $stmt = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeForOracle($table) . '.' . $this->connection->escapeForOracle($field) . ' IS ' . $this->prepareComment($spec['description']));
+      $stmt = $this->connection->prepare('COMMENT ON COLUMN ' . $table_name . '.' . $field_name . ' IS ' . $this->prepareComment($spec['description']));
       $this->connection->query($stmt);
     }
   }
@@ -417,13 +421,17 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     $table_information = $this->queryTableInformation($table, TRUE);
 
+    $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $field_name = $this->connection->escapeForOracle($field);
+
     // Drop Trigger and Sequence.
     if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
       $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
       $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
     }
 
-    $this->connection->query('ALTER TABLE {' . $table . '} DROP COLUMN ' . $field);
+    $this->connection->query('ALTER TABLE ' . $table_name . ' DROP COLUMN ' . $field_name);
     return TRUE;
   }
 
@@ -432,6 +440,10 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectDoesNotExistException(t("Cannot set default value of field %table.%field: field doesn't exist.", array('%table' => $table, '%field' => $field)));
     }
 
+    $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $field_name = $this->connection->escapeForOracle($field);
+
     if (!isset($default)) {
       $default = 'NULL';
     }
@@ -439,7 +451,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
       $default = is_string($default) ? "'$default'" : $default;
     }
 
-    $this->connection->query('ALTER TABLE {' . $table . '} MODIFY (' . $field . ' DEFAULT ' . $default . ')');
+    $this->connection->query('ALTER TABLE ' . $table_name . ' MODIFY (' . $field_name . ' DEFAULT ' . $default . ')');
   }
 
   public function fieldSetNoDefault($table, $field) {
@@ -447,13 +459,17 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectDoesNotExistException(t("Cannot remove default value of field %table.%field: field doesn't exist.", array('%table' => $table, '%field' => $field)));
     }
 
-    $this->connection->query('ALTER TABLE {' . $table . '} MODIFY (' . $field . ' DEFAULT NULL)');
+    $info = $this->getPrefixInfo($table);
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $field_name = $this->connection->escapeForOracle($field);
+
+    $this->connection->query('ALTER TABLE ' . $table_name . ' MODIFY (' . $field_name . ' DEFAULT NULL)');
   }
 
   public function indexExists($table, $name) {
     $info = $this->getPrefixInfo($table);
     $table_name = $this->connection->escapeForOracle($info['table']);
-    $index_name = $this->connection->escapeForOracle($this->prefixNonTable($info['table'], $name, 'ix'));
+    $index_name = $this->connection->escapeForOracle($this->prefixNonTable($table, $name, 'ix'));
 
     // Don't use {} around user_indexes table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE TABLE_NAME = :table_name AND INDEX_NAME = :index_name', array(':table_name' => strtoupper($table_name), ':index_name' => strtoupper($index_name)))->fetchField();
@@ -463,10 +479,11 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $args = func_get_args();
 
     $info = $this->getPrefixInfo($table);
-    $constraint_name = implode('_', $args);
+    $table_name = $this->connection->escapeForOracle($info['table']);
+    $constraint_name = $this->connection->escapeForOracle(implode('_', $args));
 
     // Don't use {} around user_cons_columns table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_CONS_COLUMNS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($info['table']), ':column_name' => strtoupper($constraint_name)))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_CONS_COLUMNS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($constraint_name)))->fetchField();
   }
 
   public function addPrimaryKey($table, $fields) {
