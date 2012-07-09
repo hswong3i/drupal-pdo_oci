@@ -120,7 +120,7 @@ class SelectQuery_oci extends SelectQuery {
     // core-supported database, which rewrite the entire query structure, so
     // we need to override this method with alternate logic as LAST STEP.
     if (!empty($this->range)) {
-      $query = 'SELECT * FROM (SELECT SUB1.*, ROWNUM AS LINE2 FROM (' . $query . ') SUB1) WHERE LINE2 BETWEEN ' . ((int) $this->range['start'] + 1) . ' AND ' . ((int) $this->range['start'] + (int) $this->range['length']);
+      $query = 'SELECT * FROM (SELECT SUB1.*, ROWNUM AS ' . OCI_RANGE_ROWNUM_PLACEHOLDER . ' FROM (' . $query . ') SUB1) WHERE ' . OCI_RANGE_ROWNUM_PLACEHOLDER . ' BETWEEN ' . ((int) $this->range['start'] + 1) . ' AND ' . ((int) $this->range['start'] + (int) $this->range['length']);
     }
 
     return $query;

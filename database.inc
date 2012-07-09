@@ -13,9 +13,14 @@ require_once dirname(__FILE__) . '/tests/devel.inc';
 define('OCI_EMPTY_STRING_PLACEHOLDER', 'E#');
 
 /**
- * Long identifier prefix for Oracle.
+ * Long identifier placeholder (prefix) for Oracle.
  */
-define('OCI_LONG_IDENTIFIER_PREFIX', 'L#');
+define('OCI_LONG_IDENTIFIER_PLACEHOLDER', 'L#');
+
+/**
+ * Range query row number placeholder for Oracle.
+ */
+define('OCI_RANGE_ROWNUM_PLACEHOLDER', 'R#');
 
 /**
  * Identifier max length limitation for Oracle.
@@ -228,7 +233,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     // Do we have the mapping?
     if (!isset($conf['long_identifiers'][$matches[0]])) {
       // Generate the mapping with prefix.
-      $shorthand = OCI_LONG_IDENTIFIER_PREFIX . crc32($matches[0]);
+      $shorthand = OCI_LONG_IDENTIFIER_PLACEHOLDER . crc32($matches[0]);
       $conf['long_identifiers'][$matches[0]] = $shorthand;
 
       // Prepare for save.
@@ -255,8 +260,12 @@ class DatabaseConnection_oci extends DatabaseConnection {
     // Preserve with array handling.
     if (is_array($data)) {
       foreach ($data as $key => $value) {
+        // Remove the range query row number placeholder.
+        if ($key === OCI_RANGE_ROWNUM_PLACEHOLDER) {
+          unset($data[$key]);
+        }
         // Column name is present as shorthand.
-        if (strpos($key, OCI_LONG_IDENTIFIER_PREFIX) === 0 && isset($shorthand[$key])) {
+        elseif (strpos($key, OCI_LONG_IDENTIFIER_PLACEHOLDER) === 0 && isset($shorthand[$key])) {
           $data[$shorthand[$key]] = $this->restoreForOracle($value);
           unset($data[$key]);
         }
@@ -268,8 +277,12 @@ class DatabaseConnection_oci extends DatabaseConnection {
     // Preserve with object handling.
     elseif (is_object($data)) {
       foreach ($data as $key => $value) {
+        // Remove the range query row number placeholder.
+        if ($key === OCI_RANGE_ROWNUM_PLACEHOLDER) {
+          unset($data->{$key});
+        }
         // Column name is present as shorthand.
-        if (strpos($key, OCI_LONG_IDENTIFIER_PREFIX) === 0 && isset($shorthand[$key])) {
+        elseif (strpos($key, OCI_LONG_IDENTIFIER_PLACEHOLDER) === 0 && isset($shorthand[$key])) {
           $data->{$shorthand[$key]} = $this->restoreForOracle($value);
           unset($data->{$key});
         }
@@ -283,7 +296,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
       if ($data === OCI_EMPTY_STRING_PLACEHOLDER) {
         return '';
       }
-      elseif (strpos($data, OCI_LONG_IDENTIFIER_PREFIX) === 0 && isset($shorthand[$data])) {
+      elseif (strpos($data, OCI_LONG_IDENTIFIER_PLACEHOLDER) === 0 && isset($shorthand[$data])) {
         return $shorthand[$data];
       }
     }
@@ -301,7 +314,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
 
 
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
-    return $this->query('SELECT * FROM (SELECT SUB1.*, ROWNUM AS LINE2 FROM (' . $query . ') SUB1) WHERE LINE2 BETWEEN ' . ($from + 1) . ' AND ' . ($from + $count), $args, $options);
+    return $this->query('SELECT * FROM (SELECT SUB1.*, ROWNUM AS ' . OCI_RANGE_ROWNUM_PLACEHOLDER . ' FROM (' . $query . ') SUB1) WHERE ' . OCI_RANGE_ROWNUM_PLACEHOLDER . ' BETWEEN ' . ($from + 1) . ' AND ' . ($from + $count), $args, $options);
   }
 
   public function queryTemporary($query, array $args = array(), array $options = array()) {
