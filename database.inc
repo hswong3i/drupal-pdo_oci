@@ -558,11 +558,6 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
       }
     }
 
-    $logger = $this->dbh->getLogger();
-    if (!empty($logger)) {
-      $query_start = microtime(TRUE);
-    }
-
     // Prepare the query.
     $statement = $this->getStatement($this->queryString, $args);
     if (!$statement) {
@@ -578,6 +573,8 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
 
     $return = FALSE;
     try {
+      // $statement->execute() will handle query logging so we don't
+      // duplicate log within this function.
       $return = $statement->execute($args);
       if (!$return) {
         $this->throwPDOException();
@@ -615,11 +612,6 @@ class DatabaseStatement_oci extends DatabaseStatementPrefetch implements Iterato
     }
     else {
       $this->columnNames = array();
-    }
-
-    if (!empty($logger)) {
-      $query_end = microtime(TRUE);
-      $logger->log($this, $args, $query_end - $query_start);
     }
 
     // Initialize the first row in $this->currentRow.
