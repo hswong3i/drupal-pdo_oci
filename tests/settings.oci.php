@@ -11,7 +11,8 @@ $databases = array (
       'host' => 'localhost.localdomain',
       'port' => '',
       'driver' => 'oci',
-      'prefix' => 'simpletest9999999',
+      // 30 characters prefix.
+      'prefix' => 'simpletest12345678901234567890',
     ),
   ),
 );
