@@ -233,14 +233,22 @@ class DatabaseConnection_oci extends DatabaseConnection {
       $shorthand = OCI_LONG_IDENTIFIER_PLACEHOLDER . crc32($matches[0]);
       $conf['long_identifiers'][$matches[0]] = $shorthand;
 
-      // Prepare for save.
-      $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
-      $content = "\$conf['long_identifiers']['$matches[0]'] = '$shorthand';\n";
+      // We put temporary mapping for simpletest into separate file.
+      if (strpos($matches[0], 'simpletest') === 0) {
+        $settings_file = sys_get_temp_dir() . '/' . preg_replace('/^(simpletest[0-9]*).*$/i', '$1', $matches[0]) . '.tmp';
+        if (!file_exists($settings_file)) {
+          $fh = fopen($settings_file, 'w') or die ("Can't create file.");
+          fclose($fh);
+        }
+      }
+      else {
+        $settings_file = DRUPAL_ROOT . '/' . conf_path() . '/settings.php';
+      }
 
       // Save the long identifiers mapping to settings.php.
       chmod($settings_file, 0666) or die ("Can't chmod($settings_file, 0666");
       $fh = fopen($settings_file, 'a') or die ("Can't open file.");
-      fwrite($fh, $content);
+      fwrite($fh, "\$conf['long_identifiers']['$matches[0]'] = '$shorthand';\n");
       fclose($fh);
       chmod($settings_file, 0444) or die ("Can't chmod($settings_file, 0444");
     }

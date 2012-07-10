@@ -15,6 +15,9 @@ function dprint_r($input, $return = FALSE, $name = NULL, $function = 'print_r', 
   $function($input);
   $output = ob_get_clean();
 
+  syslog(LOG_ERR, $name . $output);
+  return;
+
   $printed_value = '<pre>'. $name . $output .'</pre>';
 
   if ($return) {

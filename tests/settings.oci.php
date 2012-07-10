@@ -11,7 +11,7 @@ $databases = array (
       'host' => 'localhost.localdomain',
       'port' => '',
       'driver' => 'oci',
-      'prefix' => '',
+      'prefix' => 'simpletest9999999',
     ),
   ),
 );
