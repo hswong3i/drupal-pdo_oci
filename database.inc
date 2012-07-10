@@ -142,9 +142,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
     catch (PDOException $e) {
-      dprint_r($e->errorInfo);
-      ddebug_backtrace();
-
       if ($options['throw_exception']) {
         // Add additional debug information.
         if ($query instanceof DatabaseStatementInterface) {
@@ -261,7 +258,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     if (is_array($data)) {
       foreach ($data as $key => $value) {
         // Remove the range query row number placeholder.
-        if ($key === OCI_RANGE_ROWNUM_PLACEHOLDER) {
+        if (strtoupper($key) === OCI_RANGE_ROWNUM_PLACEHOLDER) {
           unset($data[$key]);
         }
         // Column name is present as shorthand.
@@ -278,7 +275,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
     elseif (is_object($data)) {
       foreach ($data as $key => $value) {
         // Remove the range query row number placeholder.
-        if ($key === OCI_RANGE_ROWNUM_PLACEHOLDER) {
+        if (strtoupper($key) === OCI_RANGE_ROWNUM_PLACEHOLDER) {
           unset($data->{$key});
         }
         // Column name is present as shorthand.
