@@ -419,19 +419,15 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    $table_information = $this->queryTableInformation($table, TRUE);
-
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
-    $field_name = $this->connection->escapeForOracle($field);
-
     // Drop Trigger and Sequence.
-    if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
+    try {
       $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
       $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
     }
-
-    $this->connection->query('ALTER TABLE ' . $table_name . ' DROP COLUMN ' . $field_name);
+    catch (Exception $e) {
+      // No action required.
+    }
+    $this->connection->query('ALTER TABLE {' . $table . '} DROP COLUMN ' . $field);
     return TRUE;
   }
 
@@ -554,18 +550,20 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot rename field %table.%name to %name_new: target field already exists.", array('%table' => $table, '%name' => $field, '%name_new' => $field_new)));
     }
 
-    $table_information = $this->queryTableInformation($table, TRUE);
-
     $not_null = isset($spec['not null']) ? $spec['not null'] : FALSE;
     unset($spec['not null']);
 
     $spec['size'] = isset($spec['size']) ? $spec['size'] : 'normal';
 
     // Drop Trigger and rename Sequence.
-    if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
-      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
+    $serial_value = 0;
+    try {
       $serial_value = $this->connection->query('SELECT ' . $this->connection->makeSequenceName($table, $field) . ' CURRVAL FROM DUAL')->fetchField();
+      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
       $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
+    }
+    catch (Exception $e) {
+      // No action required.
     }
 
     // Backup legacy field data.
@@ -586,9 +584,9 @@ class DatabaseSchema_oci extends DatabaseSchema {
     }
 
     // Restore latest Sequence ID.
-    if (!empty($table_information->serial_fields) && ($table_information->serial_fields[0] == $field)) {
-      $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field_new));
-      $this->connection->query('CREATE SEQUENCE ' . $this->connection->makeSequenceName($table, $field_new) . ' MINVALUE 1 INCREMENT BY 1 START WITH :serial_value NOCACHE NOORDER NOCYCLE', array(':serial_value' => $serial_value));
+    if ($serial_value > 0) {
+      $this->connection->query($this->_createSequenceSql($table, $field_new, $serial_value));
+      $this->connection->query($this->_createTriggerSql($table, $field_new));
     }
   }
 
@@ -598,8 +596,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
     return $query;
   }
 
-  protected function _createSequenceSql($table, $field) {
-    return 'CREATE SEQUENCE ' . $this->connection->makeSequenceName($table, $field) . ' MINVALUE 1 INCREMENT BY 1 START WITH 1 NOCACHE NOORDER NOCYCLE';
+  protected function _createSequenceSql($table, $field, $start = 1) {
+    return 'CREATE SEQUENCE ' . $this->connection->makeSequenceName($table, $field) . ' MINVALUE 1 INCREMENT BY 1 START WITH ' . $start . ' NOCACHE NOORDER NOCYCLE';
   }
 
   protected function _createTriggerSql($table, $field) {
