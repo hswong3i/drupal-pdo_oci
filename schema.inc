@@ -49,7 +49,6 @@ class DatabaseSchema_oci extends DatabaseSchema {
         'blob_fields' => array(),
         'sequences' => array(),
         'serial_fields' => array(),
-        'indexes' => array(),
       );
       // Don't use {} around user_tab_cols table.
       $result = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND DATA_TYPE = 'BLOB'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
@@ -64,11 +63,6 @@ class DatabaseSchema_oci extends DatabaseSchema {
           $table_information->sequences[] = $sequence;
           $table_information->serial_fields[] = strtolower($this->connection->restoreForOracle($column->column_name));
         }
-      }
-      // Don't use {} around user_indexes table.
-      $result = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
-      foreach ($result as $column) {
-        $table_information->indexes[strtolower($this->connection->restoreForOracle($column->index_name))] = TRUE;
       }
       $this->tableInformation[$key] = $table_information;
     }
@@ -328,24 +322,32 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot rename %table to %table_new: table %table_new already exists.", array('%table' => $table, '%table_new' => $new_name)));
     }
 
-    $info = $this->getPrefixInfo($new_name);
-    $table_information = $this->queryTableInformation($table, TRUE);
-
-    // Rename Table.
-    $this->connection->query('ALTER TABLE {' . $table . '} RENAME TO ' . $info['table']);
+    $prefixed_table = $this->connection->prefixTables('{' . $table . '}');
+    $prefixed_new_name = $this->connection->prefixTables('{' . $new_name . '}');
 
     // Rename Indexes.
-    foreach ($table_information->indexes as $index => $value) {
-      $new_index = strtr($index, array($table => $new_name));
-      $this->connection->query('ALTER INDEX ' . $index . ' RENAME TO ' . $new_index);
+    $results = $this->connection->query("SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME = :table_name", array(':table_name' => strtoupper($this->connection->escapeForOracle($prefixed_table))));
+    foreach ($results as $result) {
+      $prefixed_index = strtolower($this->connection->restoreForOracle($result->index_name));
+      $prefixed_new_index = strtr($prefixed_index, array($prefixed_table => $prefixed_new_name));
+      $this->connection->query('ALTER INDEX ' . $prefixed_index . ' RENAME TO ' . $prefixed_new_index);
     }
 
+    // Rename Table.
+    $this->connection->query('ALTER TABLE ' . $prefixed_table . ' RENAME TO ' . $prefixed_new_name);
+
     // Drop Trigger, rename Sequence, and re-create Trigger.
-    if (!empty($table_information->serial_fields)) {
-      $field = $table_information->serial_fields[0];
-      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
-      $this->connection->query('RENAME ' . $this->connection->makeSequenceName($table, $field) . ' TO ' . $this->connection->makeSequenceName($new_name, $field));
-      $this->connection->query($this->_createTriggerSql($new_name, $field));
+    $results = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($this->connection->escapeForOracle($prefixed_table))));
+    foreach ($results as $result) {
+      try {
+        $field = strtolower($this->connection->restoreForOracle($result->column_name));
+        $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
+        $this->connection->query('RENAME ' . $this->connection->makeSequenceName($table, $field) . ' TO ' . $this->connection->makeSequenceName($new_name, $field));
+        $this->connection->query($this->_createTriggerSql($new_name, $field));
+      }
+      catch (Exception $e) {
+        // No action required.
+      }
     }
   }
 
@@ -354,16 +356,22 @@ class DatabaseSchema_oci extends DatabaseSchema {
       return FALSE;
     }
 
-    $table_information = $this->queryTableInformation($table, TRUE);
+    $prefixed_table = $this->connection->prefixTables('{' . $table . '}');
 
     // Drop Trigger and Sequence.
-    if (!empty($table_information->serial_fields)) {
-      $field = $table_information->serial_fields[0];
-      $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
-      $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
+    $results = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($this->connection->escapeForOracle($prefixed_table))));
+    foreach ($results as $result) {
+      try {
+        $field = strtolower($this->connection->restoreForOracle($result->column_name));
+        $this->connection->query('DROP TRIGGER ' . $this->prefixNonTable($table, $field, 'trg'));
+        $this->connection->query('DROP SEQUENCE ' . $this->connection->makeSequenceName($table, $field));
+      }
+      catch (Exception $e) {
+        // No action required.
+      }
     }
 
-    $this->connection->query('DROP TABLE {' . $table . '} CASCADE CONSTRAINTS');
+    $this->connection->query('DROP TABLE ' . $prefixed_table . ' CASCADE CONSTRAINTS');
     return TRUE;
   }
 
