@@ -25,11 +25,15 @@ class InsertQuery_oci extends InsertQuery {
     // the options array.
     $options = $this->queryOptions;
 
-    if (!empty($table_information->sequences)) {
-      $options['sequence_name'] = $table_information->sequences[0];
+    $options['sequence_name'] = NULL;
+    foreach ($table_information['fields'] as $field => $value) {
+      if ($value['type'] == 'serial') {
+        $options['sequence_name'] = $this->connection->makeSequenceName($this->table, $field);
+        break;
+      }
     }
     // If there are no sequences then we can't get a last insert id.
-    elseif ($options['return'] == Database::RETURN_INSERT_ID) {
+    if ($options['sequence_name'] == NULL && $options['return'] == Database::RETURN_INSERT_ID) {
       $options['return'] = Database::RETURN_NULL;
     }
 
@@ -47,7 +51,7 @@ class InsertQuery_oci extends InsertQuery {
 
         $max_placeholder = 0;
         foreach ($this->insertFields as $idx => $field) {
-          if (isset($table_information->blob_fields[$field])) {
+          if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
             if (!is_null($insert_values[$idx])) {
               // Writing NULL into file handler means write nothing. The file
               // handler will contain an empty string but not NULL. Therefore
@@ -77,26 +81,20 @@ class InsertQuery_oci extends InsertQuery {
         }
 
         // Check if values for a serial field has been passed.
-        if (!empty($table_information->serial_fields)) {
-          foreach ($table_information->serial_fields as $index => $serial_field) {
-            $serial_key = array_search($serial_field, $this->insertFields);
-            if ($serial_key !== FALSE) {
-              $serial_value = $insert_values[$serial_key] > 1 ? $insert_values[$serial_key] : 1;
-
-              // Force $last_insert_id to the specified value. This is only done
-              // if $index is 0.
-              if ($index == 0) {
-                $last_insert_id = $serial_value;
-              }
+        foreach ($table_information['fields'] as $field => $value) {
+          if ($value['type'] == 'serial') {
+            $key = array_search($field, $this->insertFields);
+            if ($key !== FALSE) {
+              $last_insert_id = $insert_values[$key] > 1 ? $insert_values[$key] : 1;
               // Set the sequence to the bigger value of either the passed
               // value or the max value of the column. It can happen that another
               // thread calls nextval() which could lead to a serial number being
               // used twice. However, trying to insert a value into a serial
               // column should only be done in very rare cases and is not thread
               // safe by definition.
-              $current_value = $this->connection->lastInsertId($table_information->sequences[$index]);
-              $this->connection->query('DROP SEQUENCE ' . $table_information->sequences[$index]);
-              $this->connection->query('CREATE SEQUENCE ' . $table_information->sequences[$index] . ' MINVALUE 1 INCREMENT BY 1 START WITH ' . max($serial_value, $current_value) . ' NOCACHE NOORDER NOCYCLE');
+              $current_value = $this->connection->lastInsertId($options['sequence_name']);
+              $this->connection->query('DROP SEQUENCE ' . $options['sequence_name']);
+              $this->connection->query('CREATE SEQUENCE ' . $options['sequence_name'] . ' MINVALUE 1 INCREMENT BY 1 START WITH ' . max($last_insert_id, $current_value) . ' NOCACHE NOORDER NOCYCLE');
             }
           }
         }
@@ -182,7 +180,7 @@ class InsertQuery_oci extends InsertQuery {
 
       $i = 0;
       foreach ($this->insertFields as $field) {
-        if (isset($table_information->blob_fields[$field])) {
+        if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
           // BLOB field insert in Oracle required additional handling with
           // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
           $placeholders[] = 'EMPTY_BLOB()';
@@ -260,7 +258,7 @@ class UpdateQuery_oci extends UpdateQuery {
       // Add the inverse of the fields to the condition.
       $condition = new DatabaseCondition('OR');
       foreach ($fields as $field => $data) {
-        if (!isset($table_information->blob_fields[$field])) {
+        if (!(isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob')) {
           if (is_array($data)) {
             // The field is an expression.
             $condition->where($field . ' <> ' . $data['expression']);
@@ -312,7 +310,7 @@ class UpdateQuery_oci extends UpdateQuery {
     }
 
     foreach ($fields as $field => $value) {
-      if (isset($table_information->blob_fields[$field])) {
+      if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
         if (!is_null($fields[$field])) {
           $blobs[$blob_count] = fopen('php://memory', 'a');
           fwrite($blobs[$blob_count], $value);
@@ -382,7 +380,7 @@ class UpdateQuery_oci extends UpdateQuery {
     $blob_fields = array();
     $blob_placeholders = array();
     foreach ($fields as $field => $value) {
-      if (isset($table_information->blob_fields[$field])) {
+      if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
         // BLOB field update in Oracle required additional handling with
         // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
         $update_fields[] = $this->connection->escapeForOracle($field) . ' = EMPTY_BLOB()';

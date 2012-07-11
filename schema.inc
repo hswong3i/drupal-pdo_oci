@@ -37,36 +37,24 @@ class DatabaseSchema_oci extends DatabaseSchema {
    */
   public function queryTableInformation($table, $rebuild = FALSE) {
     // Generate a key to reference this table's information on.
-    $key = $this->connection->prefixTables('{' . $table . '}');
-    if (!strpos($key, '.')) {
-      $key = 'public.' . $key;
-    }
-
-    if (!isset($this->tableInformation[$key]) || $rebuild) {
-      // Split the key into schema and table for querying.
-      list($schema, $table_name) = explode('.', $key);
-      $table_information = (object) array(
-        'blob_fields' => array(),
-        'sequences' => array(),
-        'serial_fields' => array(),
-      );
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    if (!isset($this->tableInformation[$table]['fields']) || $rebuild) {
+      $this->tableInformation[$table]['fields'] = array();
       // Don't use {} around user_tab_cols table.
-      $result = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND DATA_TYPE = 'BLOB'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
-      foreach ($result as $column) {
-        $table_information->blob_fields[strtolower($this->connection->restoreForOracle($column->column_name))] = TRUE;
+      $results = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND DATA_TYPE = 'BLOB'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
+      foreach ($results as $result) {
+        $this->tableInformation[$table]['fields'][strtolower($this->connection->restoreForOracle($result->column_name))]['type'] = 'blob';
       }
       // Don't use {} around user_constraints and user_cons_columns table.
-      $result = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
-      foreach ($result as $column) {
-        $sequence = $this->connection->makeSequenceName(strtolower($this->connection->restoreForOracle($table)), strtolower($this->connection->restoreForOracle($column->column_name)));
+      $results = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
+      foreach ($results as $result) {
+        $sequence = $this->connection->makeSequenceName(strtolower($this->connection->restoreForOracle($table)), strtolower($this->connection->restoreForOracle($result->column_name)));
         if ($this->sequenceExists($sequence)) {
-          $table_information->sequences[] = $sequence;
-          $table_information->serial_fields[] = strtolower($this->connection->restoreForOracle($column->column_name));
+          $this->tableInformation[$table]['fields'][strtolower($this->connection->restoreForOracle($result->column_name))]['type'] = 'serial';
         }
       }
-      $this->tableInformation[$key] = $table_information;
     }
-    return $this->tableInformation[$key];
+    return $this->tableInformation[$table];
   }
 
   public function tableExists($table) {
