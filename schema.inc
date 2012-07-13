@@ -66,8 +66,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
   }
 
   public function tableExists($table) {
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
 
     // Don't use {} around user_tables table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)))->fetchField();
@@ -93,8 +93,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
   }
 
   public function fieldExists($table, $column) {
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
     $column_name = $this->connection->escapeForOracle($column);
 
     // Don't use {} around user_tab_cols table.
@@ -112,7 +112,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
    *   An array of SQL statements to create the table.
    */
   protected function createTableSql($name, $table) {
-    $info = $this->getPrefixInfo($name);
+    $table_name = $this->connection->prefixTables('{' . $name . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
 
     $sql_fields = array();
     foreach ($table['fields'] as $field_name => $field) {
@@ -153,13 +154,14 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Add table comment.
     if (!empty($table['description'])) {
-      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $this->connection->escapeForOracle($info['table']) . ' IS ' . $this->prepareComment($table['description']));
+      $statements[] = $this->connection->prepare('COMMENT ON TABLE ' . $table_name . ' IS ' . $this->prepareComment($table['description']));
     }
 
     // Add column comments.
     foreach ($table['fields'] as $field_name => $field) {
       if (!empty($field['description'])) {
-        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $this->connection->escapeForOracle($info['table']) . '.' . $this->connection->escapeForOracle($field_name) . ' IS ' . $this->prepareComment($field['description']));
+        $field_name = $this->connection->escapeForOracle($field_name);
+        $statements[] = $this->connection->prepare('COMMENT ON COLUMN ' . $table_name . '.' . $field_name . ' IS ' . $this->prepareComment($field['description']));
       }
     }
 
@@ -385,8 +387,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectExistsException(t("Cannot add field %table.%field: field already exists.", array('%field' => $field, '%table' => $table)));
     }
 
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
     $field_name = $this->connection->escapeForOracle($field);
 
     $fixnull = FALSE;
@@ -446,8 +448,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectDoesNotExistException(t("Cannot set default value of field %table.%field: field doesn't exist.", array('%table' => $table, '%field' => $field)));
     }
 
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
     $field_name = $this->connection->escapeForOracle($field);
 
     if (!isset($default)) {
@@ -465,16 +467,16 @@ class DatabaseSchema_oci extends DatabaseSchema {
       throw new DatabaseSchemaObjectDoesNotExistException(t("Cannot remove default value of field %table.%field: field doesn't exist.", array('%table' => $table, '%field' => $field)));
     }
 
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
     $field_name = $this->connection->escapeForOracle($field);
 
     $this->connection->query('ALTER TABLE ' . $table_name . ' MODIFY (' . $field_name . ' DEFAULT NULL)');
   }
 
   public function indexExists($table, $name) {
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
     $index_name = $this->connection->escapeForOracle($this->prefixNonTable($table, $name, 'ix'));
 
     // Don't use {} around user_indexes table.
@@ -484,8 +486,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
   public function constraintExists($table) {
     $args = func_get_args();
 
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
     $constraint_name = $this->connection->escapeForOracle(implode('_', $args));
 
     // Don't use {} around user_cons_columns table.
@@ -643,8 +645,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
    * Retrieve a table or column comment.
    */
   public function getComment($table, $column = NULL) {
-    $info = $this->getPrefixInfo($table);
-    $table_name = $this->connection->escapeForOracle($info['table']);
+    $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
     $column_name = isset($column) ? $this->connection->escapeForOracle($column) : NULL;
 
     // Don't use {} around user_col_comments, user_tab_comments tables.
