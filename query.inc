@@ -12,13 +12,33 @@
 
 class InsertQuery_oci extends InsertQuery {
 
+  protected $schema = array();
+
+  public function __construct($connection, $table, array $options = array()) {
+    parent::__construct($connection, $table, $options);
+
+    require_once DRUPAL_ROOT . '/includes/cache.inc';
+    require_once DRUPAL_ROOT . '/includes/common.inc';
+    require_once DRUPAL_ROOT . '/includes/module.inc';
+
+    // Fetch the list of blobs and sequences used on that table.
+    $schema = array('fields' => array());
+    try {
+      $schema = drupal_get_schema($table);
+      if (!isset($schema['fields'])) {
+        throw new Exception('drupal_get_schema() return empty value.');
+      }
+    }
+    catch (Exception $e) {
+      $schema = $this->connection->schema()->queryTableInformation($table);
+    }
+    $this->schema = isset($schema['fields']) ? $schema : array('fields' => array());
+  }
+
   public function execute() {
     if (!$this->preExecute()) {
       return NULL;
     }
-
-    // Fetch the list of blobs and sequences used on that table.
-    $table_information = $this->connection->schema()->queryTableInformation($this->table);
 
     // Oracle requires the table name to be specified explicitly
     // when requesting the last insert ID, so we pass that in via
@@ -26,7 +46,7 @@ class InsertQuery_oci extends InsertQuery {
     $options = $this->queryOptions;
 
     $options['sequence_name'] = NULL;
-    foreach ($table_information['fields'] as $field => $value) {
+    foreach ($this->schema['fields'] as $field => $value) {
       if ($value['type'] == 'serial') {
         $options['sequence_name'] = $this->connection->makeSequenceName($this->table, $field);
         break;
@@ -51,7 +71,7 @@ class InsertQuery_oci extends InsertQuery {
 
         $max_placeholder = 0;
         foreach ($this->insertFields as $idx => $field) {
-          if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
+          if (isset($this->schema['fields'][$field]) && $this->schema['fields'][$field]['type'] == 'blob') {
             if (!is_null($insert_values[$idx])) {
               // Writing NULL into file handler means write nothing. The file
               // handler will contain an empty string but not NULL. Therefore
@@ -81,7 +101,7 @@ class InsertQuery_oci extends InsertQuery {
         }
 
         // Check if values for a serial field has been passed.
-        foreach ($table_information['fields'] as $field => $value) {
+        foreach ($this->schema['fields'] as $field => $value) {
           if ($value['type'] == 'serial') {
             $key = array_search($field, $this->insertFields);
             if ($key !== FALSE) {
@@ -141,10 +161,6 @@ class InsertQuery_oci extends InsertQuery {
   }
 
   public function __toString() {
-
-    // Fetch the list of blobs and sequences used on that table.
-    $table_information = $this->connection->schema()->queryTableInformation($this->table);
-
     // Create a sanitized comment string to prepend to the query.
     $comments = $this->connection->makeComment($this->comments);
 
@@ -180,7 +196,7 @@ class InsertQuery_oci extends InsertQuery {
 
       $i = 0;
       foreach ($this->insertFields as $field) {
-        if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
+        if (isset($this->schema['fields'][$field]) && $this->schema['fields'][$field]['type'] == 'blob') {
           // BLOB field insert in Oracle required additional handling with
           // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
           $placeholders[] = 'EMPTY_BLOB()';
@@ -221,6 +237,29 @@ class TruncateQuery_oci extends TruncateQuery {
 
 class UpdateQuery_oci extends UpdateQuery {
 
+  protected $schema = array();
+
+  public function __construct(DatabaseConnection $connection, $table, array $options = array()) {
+    parent::__construct($connection, $table, $options);
+
+    require_once DRUPAL_ROOT . '/includes/cache.inc';
+    require_once DRUPAL_ROOT . '/includes/common.inc';
+    require_once DRUPAL_ROOT . '/includes/module.inc';
+
+    // Fetch the list of blobs and sequences used on that table.
+    $schema = array('fields' => array());
+    try {
+      $schema = drupal_get_schema($table);
+      if (!isset($schema['fields'])) {
+        throw new Exception('drupal_get_schema() return empty value.');
+      }
+    }
+    catch (Exception $e) {
+      $schema = $this->connection->schema()->queryTableInformation($table);
+    }
+    $this->schema = isset($schema['fields']) ? $schema : array('fields' => array());
+  }
+
   protected function removeFieldsInCondition(&$fields, QueryConditionInterface $condition) {
     foreach ($condition->conditions() as $child_condition) {
       if (isset($child_condition['field']) && $child_condition['field'] instanceof QueryConditionInterface) {
@@ -236,9 +275,6 @@ class UpdateQuery_oci extends UpdateQuery {
     $max_placeholder = 0;
     $blobs = array();
     $blob_count = 0;
-
-    // Fetch the list of blobs and sequences used on that table.
-    $table_information = $this->connection->schema()->queryTableInformation($this->table);
 
     // Oracle requires the table name to be specified explicitly
     // when requesting the last insert ID, so we pass that in via
@@ -258,7 +294,7 @@ class UpdateQuery_oci extends UpdateQuery {
       // Add the inverse of the fields to the condition.
       $condition = new DatabaseCondition('OR');
       foreach ($fields as $field => $data) {
-        if (!(isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob')) {
+        if (!(isset($this->schema['fields'][$field]) && $this->schema['fields'][$field]['type'] == 'blob')) {
           if (is_array($data)) {
             // The field is an expression.
             $condition->where($field . ' <> ' . $data['expression']);
@@ -310,7 +346,7 @@ class UpdateQuery_oci extends UpdateQuery {
     }
 
     foreach ($fields as $field => $value) {
-      if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
+      if (isset($this->schema['fields'][$field]) && $this->schema['fields'][$field]['type'] == 'blob') {
         if (!is_null($fields[$field])) {
           $blobs[$blob_count] = fopen('php://memory', 'a');
           fwrite($blobs[$blob_count], $value);
@@ -357,9 +393,6 @@ class UpdateQuery_oci extends UpdateQuery {
   }
 
   public function __toString() {
-    // Fetch the list of blobs and sequences used on that table.
-    $table_information = $this->connection->schema()->queryTableInformation($this->table);
-
     // Create a sanitized comment string to prepend to the query.
     $comments = $this->connection->makeComment($this->comments);
 
@@ -380,7 +413,7 @@ class UpdateQuery_oci extends UpdateQuery {
     $blob_fields = array();
     $blob_placeholders = array();
     foreach ($fields as $field => $value) {
-      if (isset($table_information['fields'][$field]['type']) && $table_information['fields'][$field]['type'] == 'blob') {
+      if (isset($this->schema['fields'][$field]) && $this->schema['fields'][$field]['type'] == 'blob') {
         // BLOB field update in Oracle required additional handling with
         // EMPTY_BLOB() pleaseholder + RETURNING INTO (see below).
         $update_fields[] = $this->connection->escapeForOracle($field) . ' = EMPTY_BLOB()';
