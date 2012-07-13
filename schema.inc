@@ -70,7 +70,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $table_name = $this->connection->escapeForOracle($table_name);
 
     // Don't use {} around user_tables table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_TABLES WHERE LOWER(TABLE_NAME) = :table_name', array(':table_name' => strtolower($table_name)))->fetchField();
   }
 
   public function findTables($table_expression) {
@@ -98,7 +98,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $column_name = $this->connection->escapeForOracle($column);
 
     // Don't use {} around user_tab_cols table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($column_name)))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE LOWER(TABLE_NAME) = :table_name AND LOWER(COLUMN_NAME) = :column_name', array(':table_name' => strtolower($table_name), ':column_name' => strtolower($column_name)))->fetchField();
   }
 
   /**
@@ -480,7 +480,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $index_name = $this->connection->escapeForOracle($this->prefixNonTable($table, $name, 'ix'));
 
     // Don't use {} around user_indexes table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE TABLE_NAME = :table_name AND INDEX_NAME = :index_name', array(':table_name' => strtoupper($table_name), ':index_name' => strtoupper($index_name)))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_INDEXES WHERE LOWER(TABLE_NAME) = :table_name AND LOWER(INDEX_NAME) = :index_name', array(':table_name' => strtolower($table_name), ':index_name' => strtolower($index_name)))->fetchField();
   }
 
   public function constraintExists($table) {
@@ -491,7 +491,7 @@ class DatabaseSchema_oci extends DatabaseSchema {
     $constraint_name = $this->connection->escapeForOracle(implode('_', $args));
 
     // Don't use {} around user_cons_columns table.
-    return (bool) $this->connection->query('SELECT 1 FROM USER_CONS_COLUMNS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($constraint_name)))->fetchField();
+    return (bool) $this->connection->query('SELECT 1 FROM USER_CONS_COLUMNS WHERE LOWER(TABLE_NAME) = :table_name AND LOWER(COLUMN_NAME) = :column_name', array(':table_name' => strtolower($table_name), ':column_name' => strtolower($constraint_name)))->fetchField();
   }
 
   public function addPrimaryKey($table, $fields) {
@@ -651,10 +651,10 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Don't use {} around user_col_comments, user_tab_comments tables.
     if (isset($column_name)) {
-      return $this->connection->query('SELECT COMMENTS FROM USER_COL_COMMENTS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($column_name)))->fetchField();
+      return $this->connection->query('SELECT COMMENTS FROM USER_COL_COMMENTS WHERE LOWER(TABLE_NAME) = :table_name AND LOWER(COLUMN_NAME) = :column_name', array(':table_name' => strtolower($table_name), ':column_name' => strtolower($column_name)))->fetchField();
     }
     else {
-      return $this->connection->query('SELECT COMMENTS FROM USER_TAB_COMMENTS WHERE TABLE_NAME = :table_name', array(':table_name' => strtoupper($table_name)))->fetchField();
+      return $this->connection->query('SELECT COMMENTS FROM USER_TAB_COMMENTS WHERE LOWER(TABLE_NAME) = :table_name', array(':table_name' => strtolower($table_name)))->fetchField();
     }
   }
 }
