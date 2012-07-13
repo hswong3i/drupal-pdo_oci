@@ -38,22 +38,30 @@ class DatabaseSchema_oci extends DatabaseSchema {
   public function queryTableInformation($table, $rebuild = FALSE) {
     // Generate a key to reference this table's information on.
     $table_name = $this->connection->prefixTables('{' . $table . '}');
+    $table_name = $this->connection->escapeForOracle($table_name);
+
     if (!isset($this->tableInformation[$table]['fields']) || $rebuild) {
       $this->tableInformation[$table]['fields'] = array();
+
       // Don't use {} around user_tab_cols table.
-      $results = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND DATA_TYPE = 'BLOB'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
+      $results = $this->connection->query("SELECT COLUMN_NAME FROM USER_TAB_COLS WHERE DATA_TYPE = 'BLOB' AND LOWER(TABLE_NAME) = :table_name", array(':table_name' => strtolower($table_name)));
       foreach ($results as $result) {
-        $this->tableInformation[$table]['fields'][strtolower($this->connection->restoreForOracle($result->column_name))]['type'] = 'blob';
+        $field = strtolower($this->connection->restoreForOracle($result->column_name));
+        $this->tableInformation[$table]['fields'][$field]['type'] = 'blob';
       }
+
       // Don't use {} around user_constraints and user_cons_columns table.
-      $results = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE COLS.TABLE_NAME = :table_name AND CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER'", array(':table_name' => strtoupper($this->connection->escapeForOracle($table_name))));
+      $results = $this->connection->query("SELECT COLS.TABLE_NAME, COLS.COLUMN_NAME FROM USER_CONSTRAINTS CONS, USER_CONS_COLUMNS COLS, USER_TAB_COLS TCOLS WHERE CONS.CONSTRAINT_TYPE = 'P' AND CONS.CONSTRAINT_NAME = COLS.CONSTRAINT_NAME AND CONS.OWNER = COLS.OWNER AND COLS.TABLE_NAME = TCOLS.TABLE_NAME AND COLS.COLUMN_NAME = TCOLS.COLUMN_NAME AND TCOLS.DATA_TYPE = 'NUMBER' AND LOWER(COLS.TABLE_NAME) = :table_name", array(':table_name' => strtolower($table_name)));
       foreach ($results as $result) {
-        $sequence = $this->connection->makeSequenceName(strtolower($this->connection->restoreForOracle($table)), strtolower($this->connection->restoreForOracle($result->column_name)));
-        if ($this->sequenceExists($sequence)) {
-          $this->tableInformation[$table]['fields'][strtolower($this->connection->restoreForOracle($result->column_name))]['type'] = 'serial';
+        $field = strtolower($this->connection->restoreForOracle($result->column_name));
+        $sequence_name = $this->connection->makeSequenceName($table, $field);
+        $sequence_name = $this->connection->escapeForOracle($sequence_name);
+        if ($this->connection->query("SELECT 1 FROM USER_SEQUENCES WHERE LOWER(SEQUENCE_NAME) = :sequence_name", array(':sequence_name' => strtolower($sequence_name)))->fetchField()) {
+          $this->tableInformation[$table]['fields'][$field]['type'] = 'serial';
         }
       }
     }
+
     return $this->tableInformation[$table];
   }
 
@@ -91,14 +99,6 @@ class DatabaseSchema_oci extends DatabaseSchema {
 
     // Don't use {} around user_tab_cols table.
     return (bool) $this->connection->query('SELECT 1 FROM USER_TAB_COLS WHERE TABLE_NAME = :table_name AND COLUMN_NAME = :column_name', array(':table_name' => strtoupper($table_name), ':column_name' => strtoupper($column_name)))->fetchField();
-  }
-
-  public function sequenceExists($sequence) {
-    // Sequence generated may usually >30 characters so need escape.
-    $sequence_name = $this->connection->escapeForOracle($sequence);
-
-    // Don't use {} around user_sequences table.
-    return (bool) $this->connection->query("SELECT 1 FROM USER_SEQUENCES WHERE SEQUENCE_NAME = :sequence_name", array(':sequence_name' => strtoupper($sequence_name)))->fetchField();
   }
 
   /**
