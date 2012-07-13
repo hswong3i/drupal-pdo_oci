@@ -66,8 +66,22 @@ class DatabaseSchema_oci extends DatabaseSchema {
   }
 
   public function findTables($table_expression) {
+    // We need to manually search for the table name, since fetched
+    // result should be restored as original long identifier.
+    $table_expression = '/^' . strtr($table_expression, '%', '.*') . '$/';
+
     // Don't use {} around user_tables table.
-    return $this->connection->query('SELECT LOWER(TABLE_NAME) FROM USER_TABLES WHERE TABLE_NAME LIKE :table_expression', array(':table_expression' => strtoupper($table_expression)))->fetchAllKeyed(0, 0);
+    $results = $this->connection->query('SELECT TABLE_NAME FROM USER_TABLES');
+
+    $tables = array();
+    foreach ($results as $result) {
+      $table_name = $this->connection->restoreForOracle(strtolower($result->table_name));
+      if (preg_match($table_expression, $table_name)) {
+        $tables[$table_name] = $table_name;
+      }
+    }
+
+    return $tables;
   }
 
   public function fieldExists($table, $column) {
