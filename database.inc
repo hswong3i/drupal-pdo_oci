@@ -317,7 +317,6 @@ class DatabaseConnection_oci extends DatabaseConnection {
     return $data;
   }
 
-
   public function queryRange($query, $from, $count, array $args = array(), array $options = array()) {
     return $this->query('SELECT * FROM (SELECT SUB1.*, ROWNUM AS ' . OCI_RANGE_ROWNUM_PLACEHOLDER . ' FROM (' . $query . ') SUB1) WHERE ' . OCI_RANGE_ROWNUM_PLACEHOLDER . ' BETWEEN ' . ($from + 1) . ' AND ' . ($from + $count), $args, $options);
   }
@@ -366,13 +365,13 @@ class DatabaseConnection_oci extends DatabaseConnection {
    * and updating a sequences table.
    */
   public function nextId($existing_id = 0) {
-    $transaction = $this->startTransaction();
-
     // Retrive the name of the sequence. This information cannot be cached
     // because the prefix may change, for example, like it does in simpletests.
     $sequence_name = $this->makeSequenceName('sequences', 'value');
+    $sequence_name = $this->escapeForOracle($sequence_name);
 
-    if ((bool) $this->query("SELECT 1 FROM USER_SEQUENCES WHERE SEQUENCE_NAME = :sequence_name", array(':sequence_name' => strtoupper($this->escapeForOracle($sequence_name))))->fetchField()) {
+    // Don't use {} around user_sequences table.
+    if ($this->query("SELECT 1 FROM USER_SEQUENCES WHERE LOWER(SEQUENCE_NAME) = :sequence_name", array(':sequence_name' => strtolower($sequence_name)))->fetchField()) {
       // When Oracle gets a value too small then it will lock the table,
       // retry the INSERT and if is's still too small than alter the sequence.
       $id = $this->query('SELECT ' . $sequence_name . '.NEXTVAL FROM DUAL')->fetchField();

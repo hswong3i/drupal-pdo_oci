@@ -56,6 +56,8 @@ class DatabaseSchema_oci extends DatabaseSchema {
         $field = strtolower($this->connection->restoreForOracle($result->column_name));
         $sequence_name = $this->connection->makeSequenceName($table, $field);
         $sequence_name = $this->connection->escapeForOracle($sequence_name);
+
+        // Don't use {} around user_sequences table.
         if ($this->connection->query("SELECT 1 FROM USER_SEQUENCES WHERE LOWER(SEQUENCE_NAME) = :sequence_name", array(':sequence_name' => strtolower($sequence_name)))->fetchField()) {
           $this->tableInformation[$table]['fields'][$field]['type'] = 'serial';
         }
