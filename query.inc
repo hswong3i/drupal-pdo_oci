@@ -17,21 +17,8 @@ class InsertQuery_oci extends InsertQuery {
   public function __construct($connection, $table, array $options = array()) {
     parent::__construct($connection, $table, $options);
 
-    require_once DRUPAL_ROOT . '/includes/cache.inc';
-    require_once DRUPAL_ROOT . '/includes/common.inc';
-    require_once DRUPAL_ROOT . '/includes/module.inc';
-
     // Fetch the list of blobs and sequences used on that table.
-    $schema = array('fields' => array());
-    try {
-      $schema = drupal_get_schema($table);
-      if (!isset($schema['fields'])) {
-        throw new Exception('drupal_get_schema() return empty value.');
-      }
-    }
-    catch (Exception $e) {
-      $schema = $this->connection->schema()->queryTableInformation($table);
-    }
+    $schema = $this->connection->schema()->queryTableInformation($table);
     $this->schema = isset($schema['fields']) ? $schema : array('fields' => array());
   }
 
@@ -242,21 +229,8 @@ class UpdateQuery_oci extends UpdateQuery {
   public function __construct(DatabaseConnection $connection, $table, array $options = array()) {
     parent::__construct($connection, $table, $options);
 
-    require_once DRUPAL_ROOT . '/includes/cache.inc';
-    require_once DRUPAL_ROOT . '/includes/common.inc';
-    require_once DRUPAL_ROOT . '/includes/module.inc';
-
     // Fetch the list of blobs and sequences used on that table.
-    $schema = array('fields' => array());
-    try {
-      $schema = drupal_get_schema($table);
-      if (!isset($schema['fields'])) {
-        throw new Exception('drupal_get_schema() return empty value.');
-      }
-    }
-    catch (Exception $e) {
-      $schema = $this->connection->schema()->queryTableInformation($table);
-    }
+    $schema = $this->connection->schema()->queryTableInformation($table);
     $this->schema = isset($schema['fields']) ? $schema : array('fields' => array());
   }
 
