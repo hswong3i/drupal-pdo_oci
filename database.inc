@@ -444,9 +444,7 @@ class DatabaseConnection_oci extends DatabaseConnection {
       }
     }
 
-    // Just use raw SQL instead of PDO::rollBack() to prevent PHP bugs.
-    $this->query('ROLLBACK');
-    // Ensure we are back to autocommit mode after transaction.
+    PDO::rollBack();
     $this->setAttribute(PDO::ATTR_AUTOCOMMIT, TRUE);
 
     if ($rolled_back_other_active_savepoints) {
@@ -467,10 +465,8 @@ class DatabaseConnection_oci extends DatabaseConnection {
       $this->query('SAVEPOINT ' . $name);
     }
     else {
-      // Ensure we are NOT in autocommit mode before transaction start.
       $this->setAttribute(PDO::ATTR_AUTOCOMMIT, FALSE);
-      // Just use raw SQL instead of PDO::beginTransaction() to prevent PHP bugs.
-      $this->query('COMMIT');
+      PDO::beginTransaction();
     }
     $this->transactionLayers[$name] = $name;
   }
@@ -504,11 +500,9 @@ class DatabaseConnection_oci extends DatabaseConnection {
       unset($this->transactionLayers[$name]);
       if (empty($this->transactionLayers)) {
         try {
-          // Use raw SQL instead of PDO::commit() to prevent PHP bugs.
-          if (!$this->query('COMMIT')) {
+          if (!PDO::commit()) {
             throw new DatabaseTransactionCommitFailedException();
           }
-          // Ensure we are back to autocommit mode after transaction.
           $this->setAttribute(PDO::ATTR_AUTOCOMMIT, TRUE);
         }
         catch (Exception $e) {
