@@ -1,5 +1,5 @@
 diff --git ext/pdo_oci/oci_driver.c ext/pdo_oci/oci_driver.c
-index cb920ab..3e2040e 100755
+index b3aa765..783d636 100755
 --- ext/pdo_oci/oci_driver.c
 +++ ext/pdo_oci/oci_driver.c
 @@ -227,8 +227,10 @@ static int oci_handle_closer(pdo_dbh_t *dbh TSRMLS_DC) /* {{{ */
